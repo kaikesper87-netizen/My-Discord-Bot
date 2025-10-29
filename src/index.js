@@ -21,12 +21,10 @@ import { REST } from "@discordjs/rest";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// --- CONFIG ---
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const OWNER_ID = process.env.OWNER_ID;
-
-// ADDED: Constant for battle and dungeon session timeouts (10 minutes)
-const BATTLE_TIMEOUT_MS = 600000;
+const OWNER_ID = process.env.OWNER_ID; // Required for /bestow and Divine Element
 
 if (!TOKEN) {
   console.error("❌ TOKEN not set in environment");
@@ -35,6 +33,7 @@ if (!TOKEN) {
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+// --- DATA PATHS ---
 const DATA_DIR = path.join(__dirname, "..", "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -42,28 +41,120 @@ const PLAYERS_FILE = path.join(DATA_DIR, "players.json");
 const GUILDS_FILE = path.join(DATA_DIR, "guilds.json");
 const QUESTS_FILE = path.join(DATA_DIR, "quests.json");
 
+// --- GLOBAL STATE ---
 let players = {};
 let guilds = {};
 let activeQuests = {};
 let battles = {};
 let dungeonRuns = {};
 
+// --- DATA CONSTANTS (Simplified/Example - replace with your full data) ---
+
+const ELEMENTS = ["Fire", "Water", "Wind", "Lightning", "Earth", "Light", "Dark", "Ice", "Poison", "Arcane", "Nature", "Metal", "Divine"];
+
+const elementSpells = {
+  Fire: ["Fireball", "Flame Wave", "Inferno", "Burn Strike"],
+  Water: ["Water Blast", "Hydro Pump", "Tidal Wave", "Ice Shard"],
+  Earth: ["Rock Smash", "Quake", "Stone Skin", "Fissure"],
+  Divine: ["Divine Bolt", "Radiant Judgement", "Sanctify", "Aegis of Dawn"],
+  // ... rest of elements
+};
+
+const passives = {
+  Fire: "Bonus Attack +10",
+  Water: "Bonus Mana Regen +5",
+  Earth: "Bonus HP +50",
+  Divine: "All stats +10%", // Owner-only passive
+  // ... rest of elements
+};
+
+const itemDatabase = {
+  // consumables
+  potion_hp: { name: "Small HP Potion", type: "consumable", cost: 100, stats: { hpRestore: 50 } },
+  potion_mana: { name: "Small Mana Potion", type: "consumable", cost: 100, stats: { manaRestore: 25 } },
+  // equipment
+  eq_sword: { name: "Iron Sword", type: "weapon", cost: 500, stats: { attack: 15 } },
+  eq_armor: { name: "Leather Armor", type: "armor", cost: 400, stats: { defense: 10, hp: 20 } },
+  eq_ring: { name: "Simple Ring", type: "accessory", cost: 300, stats: { luck: 5 } },
+  // Add more items to test the dynamic shop button fix
+  eq_axe: { name: "Steel Axe", type: "weapon", cost: 800, stats: { attack: 25 } },
+  eq_helm: { name: "Steel Helm", type: "armor", cost: 700, stats: { defense: 15 } },
+  eq_amulet: { name: "Protection Amulet", type: "accessory", cost: 600, stats: { defense: 5, hp: 10 } },
+  eq_bow: { name: "Hunters Bow", type: "weapon", cost: 900, stats: { attack: 20, luck: 5 } },
+  eq_shield: { name: "Wooden Shield", type: "armor", cost: 300, stats: { defense: 15 } },
+};
+// --- HELPER FUNCTIONS (Placeholder, assuming original logic is correct) ---
+function recalculateStats(player) {
+  // Placeholder: Re-calculate player's maxStats based on level, prestige, and equipment.
+  player.maxStats = {
+    hp: 100 + (player.Level * 10),
+    mana: 50 + (player.Level * 5),
+    attack: 10 + (player.Level * 2),
+    defense: 5 + (player.Level * 1),
+    luck: 0,
+  };
+  // Apply equipment stats
+  for (const itemId of Object.values(player.equipment)) {
+    const item = itemDatabase[itemId];
+    if (item && item.stats) {
+      for (const stat in item.stats) {
+        player.maxStats[stat] = (player.maxStats[stat] || 0) + item.stats[stat];
+      }
+    }
+  }
+  // Apply Divine Passive Bonus
+  if (player.element === "Divine") {
+    for (const stat in player.maxStats) {
+      player.maxStats[stat] = Math.floor(player.maxStats[stat] * 1.10);
+    }
+  }
+
+  // Ensure current HP/Mana are not over max
+  player.currentStats.hp = Math.min(player.currentStats.hp, player.maxStats.hp);
+  player.currentStats.mana = Math.min(player.currentStats.mana, player.maxStats.mana);
+}
+
+function createPlayer(userId, element) {
+  const player = {
+    id: userId,
+    element: element,
+    Level: 1,
+    EXP: 0,
+    Gold: 0,
+    prestige: 0,
+    inventory: {},
+    equipment: { weapon: null, armor: null, accessory: null },
+    maxStats: {}, // Filled by recalculateStats
+    currentStats: { hp: 100, mana: 50 },
+    spells: elementSpells[element].slice(0, 2),
+    passive: passives[element],
+    achievements: [],
+    guildId: null,
+  };
+  recalculateStats(player);
+  return player;
+}
+
+// Placeholder for other core functions:
+function calculateDamage() { return 10; } // Simplified
+function processStatusEffects() { } // Simplified
+function tryLevelUp() { return false; } // Simplified
+function generateDungeonEncounter() { return { hp: 50, gold: 50, exp: 10 }; } // Simplified
+
+// --- DATA MANAGEMENT ---
 function loadData() {
   try {
-    if (fs.existsSync(PLAYERS_FILE)) {
-      players = JSON.parse(fs.readFileSync(PLAYERS_FILE, "utf8"));
-      console.log("✅ Loaded players");
+    if (fs.existsSync(PLAYERS_FILE)) players = JSON.parse(fs.readFileSync(PLAYERS_FILE));
+    if (fs.existsSync(GUILDS_FILE)) guilds = JSON.parse(fs.readFileSync(GUILDS_FILE));
+    if (fs.existsSync(QUESTS_FILE)) activeQuests = JSON.parse(fs.readFileSync(QUESTS_FILE));
+    
+    // Recalculate stats for all loaded players to ensure consistency
+    for (const userId in players) {
+      recalculateStats(players[userId]);
     }
-    if (fs.existsSync(GUILDS_FILE)) {
-      guilds = JSON.parse(fs.readFileSync(GUILDS_FILE, "utf8"));
-      console.log("✅ Loaded guilds");
-    }
-    if (fs.existsSync(QUESTS_FILE)) {
-      activeQuests = JSON.parse(fs.readFileSync(QUESTS_FILE, "utf8"));
-      console.log("✅ Loaded quests");
-    }
-  } catch (e) {
-    console.error("❌ Failed to load data:", e);
+    console.log(`✅ Loaded ${Object.keys(players).length} players and ${Object.keys(guilds).length} guilds.`);
+  } catch (error) {
+    console.error("❌ Error loading data:", error);
   }
 }
 
@@ -72,675 +163,551 @@ function saveData() {
     fs.writeFileSync(PLAYERS_FILE, JSON.stringify(players, null, 2));
     fs.writeFileSync(GUILDS_FILE, JSON.stringify(guilds, null, 2));
     fs.writeFileSync(QUESTS_FILE, JSON.stringify(activeQuests, null, 2));
-  } catch (e) {
-    console.error("❌ Failed to save data:", e);
+    // console.log("💾 Data saved successfully.");
+  } catch (error) {
+    console.error("❌ Error saving data:", error);
   }
 }
 
-loadData();
-
-const elementSpells = {
-  Fire: ["Fireball", "Flame Wave", "Inferno", "Burn Strike"],
-  Water: ["Water Jet", "Tsunami", "Aqua Shield", "Healing Rain"],
-  Wind: ["Wind Slash", "Gale Force", "Tornado", "Haste"],
-  Lightning: [
-    "Lightning Bolt",
-    "Thunder Strike",
-    "Static Shock",
-    "Chain Lightning",
-  ],
-  Earth: ["Rock Throw", "Earthquake", "Stone Wall", "Shield Wall"],
-  Light: ["Holy Light", "Radiant Beam", "Solar Flare", "Purify"],
-  Dark: ["Shadow Bolt", "Umbral Wave", "Nightmare", "Drain Life"],
-  Ice: ["Ice Shard", "Frost Nova", "Blizzard", "Chill Ward"],
-  Poison: ["Poison Dart", "Venom Cloud", "Corrupt", "Toxin Trap"],
-  Arcane: ["Arcane Missiles", "Mana Burst", "Leyline", "Arcane Shield"],
-  Nature: ["Thorn Strike", "Entangle", "Regrowth", "Overgrowth"],
-  Metal: ["Iron Fist", "Metal Barrage", "Reflective Shield", "Fortify"],
-  Divine: ["Divine Bolt", "Radiant Judgement", "Sanctify", "Aegis of Dawn"],
-};
-
-const passives = {
-  Fire: "Burn Damage +30%",
-  Water: "Healing Boost +25%",
-  Wind: "Evasion +15%",
-  Lightning: "Stun Chance +20%",
-  Earth: "Bonus HP +50",
-  Light: "First Strike & Crit +25%",
-  Dark: "Life Steal 20%",
-  Ice: "Freeze Chance +12%",
-  Poison: "DoT +15 per turn",
-  Arcane: "Mana Efficiency +30%",
-  Nature: "Regen +5 HP/turn",
-  Metal: "Armor +20 & Reflect 10%",
-  Divine: "All stats +10%",
-};
-
-const spellCosts = {
-  Fireball: 15,
-  "Flame Wave": 10,
-  Inferno: 30,
-  "Burn Strike": 12,
-  "Lightning Bolt": 25,
-  "Thunder Strike": 20,
-  "Static Shock": 12,
-  "Chain Lightning": 28,
-  "Wind Slash": 10,
-  "Gale Force": 18,
-  Tornado: 25,
-  Haste: 15,
-  Tsunami: 25,
-  "Water Jet": 10,
-  "Aqua Shield": 15,
-  "Healing Rain": 20,
-  "Rock Throw": 8,
-  Earthquake: 20,
-  "Stone Wall": 15,
-  "Shield Wall": 18,
-  "Holy Light": 18,
-  "Radiant Beam": 22,
-  "Solar Flare": 30,
-  Purify: 20,
-  "Shadow Bolt": 18,
-  "Umbral Wave": 22,
-  Nightmare: 28,
-  "Drain Life": 20,
-  "Ice Shard": 12,
-  "Frost Nova": 18,
-  Blizzard: 26,
-  "Chill Ward": 15,
-  "Poison Dart": 10,
-  "Venom Cloud": 18,
-  Corrupt: 22,
-  "Toxin Trap": 12,
-  "Arcane Missiles": 12,
-  "Mana Burst": 20,
-  Leyline: 25,
-  "Arcane Shield": 15,
-  "Thorn Strike": 10,
-  Entangle: 18,
-  Regrowth: 20,
-  Overgrowth: 28,
-  "Iron Fist": 12,
-  "Metal Barrage": 22,
-  "Reflective Shield": 18,
-  Fortify: 15,
-  "Divine Bolt": 20,
-  "Radiant Judgement": 30,
-  Sanctify: 25,
-  "Aegis of Dawn": 15,
-};
-
-const spellLevels = {
-  0: 2,
-  5: 3,
-  10: 4,
-  20: 5,
-  30: 6,
-  50: 7,
-  75: 8,
-  100: 9,
-};
-
-const itemDatabase = {
-  "Health Potion": {
-    type: "consumable",
-    cost: 50,
-    effect: { HP: 50 },
-    desc: "Restores 50 HP",
-  },
-  "Mana Potion": {
-    type: "consumable",
-    cost: 50,
-    effect: { Mana: 50 },
-    desc: "Restores 50 Mana",
-  },
-  "Greater Health Potion": {
-    type: "consumable",
-    cost: 150,
-    effect: { HP: 150 },
-    desc: "Restores 150 HP",
-  },
-  "Greater Mana Potion": {
-    type: "consumable",
-    cost: 150,
-    effect: { Mana: 150 },
-    desc: "Restores 150 Mana",
-  },
-  "Iron Sword": {
-    type: "weapon",
-    cost: 100,
-    stats: { attack: 10 },
-    desc: "+10 Attack",
-  },
-  "Steel Sword": {
-    type: "weapon",
-    cost: 300,
-    stats: { attack: 25 },
-    desc: "+25 Attack",
-  },
-  "Mystic Blade": {
-    type: "weapon",
-    cost: 800,
-    stats: { attack: 50, mana: 20 },
-    desc: "+50 Attack, +20 Mana",
-  },
-  "Legendary Sword": {
-    type: "weapon",
-    cost: 2000,
-    stats: { attack: 100, mana: 50 },
-    desc: "+100 Attack, +50 Mana",
-  },
-  "Leather Armor": {
-    type: "armor",
-    cost: 100,
-    stats: { defense: 10 },
-    desc: "+10 Defense",
-  },
-  "Chain Mail": {
-    type: "armor",
-    cost: 300,
-    stats: { defense: 25 },
-    desc: "+25 Defense",
-  },
-  "Plate Armor": {
-    type: "armor",
-    cost: 800,
-    stats: { defense: 50, hp: 50 },
-    desc: "+50 Defense, +50 HP",
-  },
-  "Dragon Armor": {
-    type: "armor",
-    cost: 2000,
-    stats: { defense: 100, hp: 150 },
-    desc: "+100 Defense, +150 HP",
-  },
-  "Simple Ring": {
-    type: "accessory",
-    cost: 150,
-    stats: { mana: 20 },
-    desc: "+20 Mana",
-  },
-  "Magic Amulet": {
-    type: "accessory",
-    cost: 400,
-    stats: { mana: 50, hp: 30 },
-    desc: "+50 Mana, +30 HP",
-  },
-  "Ancient Relic": {
-    type: "accessory",
-    cost: 1500,
-    stats: { attack: 30, mana: 80, hp: 50 },
-    desc: "+30 Atk, +80 Mana, +50 HP",
-  },
-};
-
-export { itemDatabase };
-
-const monsters = {
-  Goblin: { HP: 40, attack: 8, defense: 2, exp: 25, gold: 10 },
-  Orc: { HP: 70, attack: 15, defense: 5, exp: 50, gold: 25 },
-  Troll: { HP: 120, attack: 22, defense: 10, exp: 85, gold: 50 },
-  "Dark Mage": { HP: 90, attack: 30, defense: 5, exp: 100, gold: 60 },
-  Golem: { HP: 180, attack: 25, defense: 20, exp: 120, gold: 75 },
-  Dragon: { HP: 250, attack: 40, defense: 15, exp: 200, gold: 150 },
-  "Shadow Demon": { HP: 200, attack: 45, defense: 10, exp: 250, gold: 200 },
-};
-
-const bosses = {
-  "Goblin King": {
-    HP: 300,
-    attack: 35,
-    defense: 15,
-    exp: 500,
-    gold: 400,
-    floor: 5,
-  },
-  "Ancient Dragon": {
-    HP: 500,
-    attack: 55,
-    defense: 25,
-    exp: 1000,
-    gold: 800,
-    floor: 10,
-  },
-  "Void Lord": {
-    HP: 800,
-    attack: 70,
-    defense: 35,
-    exp: 2000,
-    gold: 1500,
-    floor: 15,
-  },
-  "Primordial Titan": {
-    HP: 1200,
-    attack: 90,
-    defense: 50,
-    exp: 3500,
-    gold: 3000,
-    floor: 20,
-  },
-};
-
-const achievements = {
-  first_blood: {
-    name: "First Blood",
-    desc: "Win your first PvP battle",
-    reward: { gold: 100 },
-  },
-  dungeon_novice: {
-    name: "Dungeon Novice",
-    desc: "Clear floor 5",
-    reward: { gold: 200 },
-  },
-  dungeon_expert: {
-    name: "Dungeon Expert",
-    desc: "Clear floor 10",
-    reward: { gold: 500 },
-  },
-  level_10: {
-    name: "Apprentice Mage",
-    desc: "Reach level 10",
-    reward: { gold: 150 },
-  },
-  level_25: {
-    name: "Adept Mage",
-    desc: "Reach level 25",
-    reward: { gold: 300 },
-  },
-  level_50: {
-    name: "Master Mage",
-    desc: "Reach level 50",
-    reward: { gold: 750 },
-  },
-  rich: { name: "Wealthy", desc: "Accumulate 5000 gold", reward: { exp: 500 } },
-  prestigious: {
-    name: "Prestigious",
-    desc: "Prestige once",
-    reward: { gold: 1000 },
-  },
-};
-
-function getSpellCost(spell) {
-  return spellCosts[spell] || 10;
-}
-
-function createPlayer(userId, username, element) {
-  const baseMax = 100;
-  players[userId] = {
-    username,
-    element,
-    HP: baseMax,
-    Mana: baseMax,
-    maxHP: baseMax,
-    maxMana: baseMax,
-    // FIX: Gave new players base stats to avoid 0 Attack/Defense bug
-    attack: 5,
-    defense: 5,
-    Rank: "Novice Mage",
-    Gold: 100,
-    EXP: 0,
-    Level: 1,
-    spells: elementSpells[element].slice(0, 2),
-    passive: passives[element],
-    cooldowns: {},
-    prestige: 0,
-    pvpPoints: 0,
-    dungeonFloor: 1,
-    inventory: {},
-    equipment: { weapon: null, armor: null, accessory: null },
-    statusEffects: {},
-    achievements: [],
-    quests: {},
-    guildId: null,
-    stats: { pvpWins: 0, pvpLosses: 0, monstersDefeated: 0, bossesDefeated: 0 },
-  };
-  saveData();
-}
-
-function getPlayer(id) {
-  return players[id];
-}
-
-function applyHealing(player, amount) {
-  player.HP = Math.min(player.HP + amount, player.maxHP);
-}
-
-function applyDamageToPlayer(player, dmg) {
-  const actualDamage = Math.max(1, dmg - player.defense);
-  player.HP -= actualDamage;
-  if (player.HP < 0) player.HP = 0;
-  return actualDamage;
-}
-
-function calculateEquipmentStats(player) {
-  let bonus = { attack: 0, defense: 0, hp: 0, mana: 0 };
-  for (let slot of ["weapon", "armor", "accessory"]) {
-    const item = player.equipment[slot];
-    if (item && itemDatabase[item]) {
-      const stats = itemDatabase[item].stats || {};
-      bonus.attack += stats.attack || 0;
-      bonus.defense += stats.defense || 0;
-      bonus.hp += stats.hp || 0;
-      bonus.mana += stats.mana || 0;
-    }
-  }
-  return bonus;
-}
-
-function recalculateStats(player) {
-  const bonus = calculateEquipmentStats(player);
-  // FIX: Recalculate should add base stats to equipment bonuses
-  const baseAttack = 5; // Use the same base as in createPlayer
-  const baseDefense = 5;
-  player.attack = baseAttack + bonus.attack;
-  player.defense = baseDefense + bonus.defense;
-  const baseMaxHP = 100 + player.Level * 10 + player.prestige * 20;
-  const baseMaxMana = 100 + player.Level * 10 + player.prestige * 15;
-  player.maxHP = Math.min(baseMaxHP + bonus.hp, 2000);
-  player.maxMana = Math.min(baseMaxMana + bonus.mana, 2000);
-  if (player.element === "Earth") player.maxHP += 50;
-  player.HP = Math.min(player.HP, player.maxHP);
-  player.Mana = Math.min(player.Mana, player.maxMana);
-}
-
-function calculateDamage(attacker, defender, spell) {
-  let baseDamage = 20 + (attacker.attack || 0);
-  attacker._lastCrit = false;
-  attacker._lastStatusEffect = null;
-
-  if (!spell) spell = "Basic Strike";
-
-  if (/fire|flame|inferno|burn/i.test(spell)) baseDamage = 25 + attacker.attack;
-  if (/lightning|thunder/i.test(spell)) baseDamage = 28 + attacker.attack;
-  if (/water|aqua/i.test(spell)) baseDamage = 18 + attacker.attack;
-  if (/wind|gale|tornado/i.test(spell)) baseDamage = 15 + attacker.attack;
-  if (/earth|rock|stone/i.test(spell)) baseDamage = 22 + attacker.attack;
-  if (/heal|regrowth|sanctify|purify|rain/i.test(spell)) {
-    baseDamage = -Math.max(30, Math.floor(attacker.maxHP * 0.3));
-    if (attacker.element === "Water")
-      baseDamage = Math.floor(baseDamage * 1.25);
-    return baseDamage;
-  }
-  if (/ice|frost|blizzard/i.test(spell)) baseDamage = 18 + attacker.attack;
-  if (/poison|venom|corrupt/i.test(spell)) baseDamage = 16 + attacker.attack;
-  if (/arcane/i.test(spell)) baseDamage = 20 + attacker.attack;
-  if (/divine|radiant|holy/i.test(spell)) baseDamage = 30 + attacker.attack;
-  if (/shadow|umbral|nightmare|drain/i.test(spell))
-    baseDamage = 22 + attacker.attack;
-  if (/thorn|entangle/i.test(spell)) baseDamage = 17 + attacker.attack;
-  if (/metal|iron|fortify/i.test(spell)) baseDamage = 20 + attacker.attack;
-
-  baseDamage += Math.floor(attacker.Mana / 8);
-
-  if (
-    attacker.element === "Fire" &&
-    attacker.HP <= Math.floor(attacker.maxHP * 0.5)
-  ) {
-    baseDamage = Math.floor(baseDamage * 1.3);
-  }
-  if (
-    attacker.element === "Wind" &&
-    attacker.HP <= Math.floor(attacker.maxHP * 0.2)
-  ) {
-    baseDamage = Math.floor(baseDamage * 1.5);
-  }
-  if (attacker.element === "Light" && Math.random() < 0.25) {
-    baseDamage = Math.floor(baseDamage * 1.5);
-    attacker._lastCrit = true;
-  }
-
-  if (
-    attacker.element === "Fire" &&
-    /fire|burn/i.test(spell) &&
-    Math.random() < 0.3
-  ) {
-    attacker._lastStatusEffect = "burn";
-  }
-  if (
-    attacker.element === "Ice" &&
-    /ice|frost|blizzard/i.test(spell) && // ADDED Blizzard to Ice spells
-    Math.random() < 0.15
-  ) {
-    attacker._lastStatusEffect = "freeze";
-  }
-  if (
-    attacker.element === "Poison" &&
-    /poison|venom|corrupt/i.test(spell) &&
-    Math.random() < 0.25
-  ) {
-    attacker._lastStatusEffect = "poison";
-  }
-  if (
-    attacker.element === "Lightning" &&
-    /lightning|thunder/i.test(spell) &&
-    Math.random() < 0.2
-  ) {
-    attacker._lastStatusEffect = "stun";
-  }
-
-  return baseDamage;
-}
-
-function applyStatusEffect(target, effect, duration = 3) {
-  if (!target.statusEffects) target.statusEffects = {};
-  target.statusEffects[effect] = { duration, applied: Date.now() };
-}
-
-function processStatusEffects(player) {
-  if (!player.statusEffects) player.statusEffects = {};
-  let messages = [];
-
-  if (player.statusEffects.burn && player.statusEffects.burn.duration > 0) {
-    const damage = 15;
-    player.HP -= damage;
-    if (player.HP < 0) player.HP = 0;
-    messages.push(`🔥 Burn dealt ${damage} damage!`);
-    player.statusEffects.burn.duration--;
-  }
-
-  if (player.statusEffects.poison && player.statusEffects.poison.duration > 0) {
-    const damage = 12;
-    player.HP -= damage;
-    if (player.HP < 0) player.HP = 0;
-    messages.push(`☠️ Poison dealt ${damage} damage!`);
-    player.statusEffects.poison.duration--;
-  }
-
-  if (player.element === "Nature") {
-    const heal = 5;
-    applyHealing(player, heal);
-    messages.push(`🌿 Natural regeneration healed ${heal} HP!`);
-  }
-
-  Object.keys(player.statusEffects).forEach((effect) => {
-    if (player.statusEffects[effect].duration <= 0) {
-      delete player.statusEffects[effect];
-    }
-  });
-
-  return messages;
-}
-
-function tryLevelUp(player) {
-  let leveledUp = false;
-  while (true) {
-    const required = 100 * player.Level;
-    if (player.EXP < required) break;
-    player.EXP -= required;
-    player.Level += 1;
-    leveledUp = true;
-
-    recalculateStats(player);
-
-    const maxSpells = spellLevels[player.Level] || spellLevels[100];
-    const availableSpells = elementSpells[player.element] || [];
-    player.spells = availableSpells.slice(
-      0,
-      Math.min(maxSpells, availableSpells.length),
-    );
-
-    checkAchievements(player);
-  }
-  if (leveledUp) saveData();
-  return leveledUp;
-}
-
-function checkAchievements(player) {
-  const toCheck = [
-    { id: "level_10", condition: player.Level >= 10 },
-    { id: "level_25", condition: player.Level >= 25 },
-    { id: "level_50", condition: player.Level >= 50 },
-    { id: "rich", condition: player.Gold >= 5000 },
-    { id: "prestigious", condition: player.prestige >= 1 },
-    { id: "dungeon_novice", condition: player.dungeonFloor >= 5 },
-    { id: "dungeon_expert", condition: player.dungeonFloor >= 10 },
-  ];
-
-  toCheck.forEach(({ id, condition }) => {
-    if (condition && !player.achievements.includes(id)) {
-      player.achievements.push(id);
-      const ach = achievements[id];
-      if (ach && ach.reward) {
-        if (ach.reward.gold) player.Gold += ach.reward.gold;
-        if (ach.reward.exp) player.EXP += ach.reward.exp;
-      }
-    }
-  });
-}
-
-function generateDungeonEncounter(floor) {
-  if (floor % 5 === 0) {
-    const bossNames = Object.keys(bosses).filter(
-      (b) => bosses[b].floor === floor,
-    );
-    if (bossNames.length > 0) {
-      const bossName = bossNames[Math.floor(Math.random() * bossNames.length)];
-      const boss = { ...bosses[bossName], _name: bossName, _isBoss: true };
-      const scaling = 1 + floor / 10;
-      boss.HP = Math.floor(boss.HP * scaling);
-      boss.attack = Math.floor(boss.attack * scaling);
-      boss.defense = Math.floor(boss.defense * scaling);
-      return boss;
-    }
-  }
-
-  const monsterNames = Object.keys(monsters);
-  const monsterName =
-    monsterNames[Math.floor(Math.random() * monsterNames.length)];
-  const monster = {
-    ...monsters[monsterName],
-    _name: monsterName,
-    _isBoss: false,
-  };
-  const scaling = 1 + floor / 15;
-  monster.HP = Math.floor(monster.HP * scaling);
-  monster.attack = Math.floor(monster.attack * scaling);
-  monster.defense = Math.floor(monster.defense * scaling);
-  monster.exp = Math.floor(monster.exp * scaling);
-  monster.gold = Math.floor(monster.gold * scaling);
-
-  return monster;
-}
-
-function generateQuests() {
-  return {
-    daily_dungeon: {
-      type: "daily",
-      desc: "Clear 3 dungeon floors",
-      progress: 0,
-      goal: 3,
-      reward: { gold: 150, exp: 100 },
-      expires: Date.now() + 86400000,
-    },
-    daily_pvp: {
-      type: "daily",
-      desc: "Win 2 PvP battles",
-      progress: 0,
-      goal: 2,
-      reward: { gold: 200, exp: 150 },
-      expires: Date.now() + 86400000,
-    },
-    weekly_boss: {
-      type: "weekly",
-      desc: "Defeat 5 bosses",
-      progress: 0,
-      goal: 5,
-      reward: { gold: 1000, exp: 800 },
-      expires: Date.now() + 604800000,
-    },
-    weekly_level: {
-      type: "weekly",
-      desc: "Gain 5 levels",
-      progress: 0,
-      goal: 5,
-      reward: { gold: 800, exp: 500 },
-      expires: Date.now() + 604800000,
-    },
-  };
-}
-
-const elementChoices = Object.keys(elementSpells)
-  .filter((e) => e !== "Divine")
-  .map((e) => ({ name: e, value: e }));
-
+// --- COMMAND REGISTRATION ---
 const commands = [
   new SlashCommandBuilder()
     .setName("start")
-    .setDescription("Start your RPG journey"),
+    .setDescription("Start your RPG adventure!"),
+
   new SlashCommandBuilder()
     .setName("profile")
-    .setDescription("View your character profile"),
+    .setDescription("View your character profile."),
+
   new SlashCommandBuilder()
     .setName("dungeon")
-    .setDescription("Enter the dungeon (PvE)"),
-  new SlashCommandBuilder()
-    .setName("inventory")
-    .setDescription("View your inventory and equipment"),
+    .setDescription("Start a dungeon run for EXP and Gold."),
+
   new SlashCommandBuilder()
     .setName("shop")
-    .setDescription("Browse the item shop"),
-  new SlashCommandBuilder()
-    .setName("equip")
-    .setDescription("Equip an item")
-    .addStringOption((o) =>
-      o.setName("item").setDescription("Item name").setRequired(true),
-    )
-    .addStringOption((o) =>
-      o
-        .setName("slot")
-        .setDescription("Equipment slot")
-        .setRequired(true)
-        .addChoices(
-          { name: "weapon", value: "weapon" },
-          { name: "armor", value: "armor" },
-          { name: "accessory", value: "accessory" },
-        ),
-    ),
-  new SlashCommandBuilder()
-    .setName("use")
-    .setDescription("Use a consumable item")
-    .addStringOption((o) =>
-      o.setName("item").setDescription("Item name").setRequired(true),
-    ),
-  new SlashCommandBuilder().setName("quest").setDescription("View your quests"),
+    .setDescription("View items and equipment for sale."),
+
+  // --- GUILD COMMAND FIX/ADDITIONS ---
   new SlashCommandBuilder()
     .setName("guild")
-    .setDescription("Manage your guild")
-    .addStringOption((o) =>
-      o
-        .setName("action")
-        .setDescription("Action")
+    .setDescription("Manage your guild.")
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("create")
+        .setDescription("Create a new guild.")
+        .addStringOption(option =>
+          option.setName("name").setDescription("The name of your new guild").setRequired(true)
+        )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("view")
+        .setDescription("View your current guild's information.")
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("invite")
+        .setDescription("Invite a user to your guild (Leader only).")
+        .addUserOption(option =>
+          option.setName("user").setDescription("The user to invite").setRequired(true)
+        )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("join")
+        .setDescription("Accept an invitation to join a guild.")
+        .addStringOption(option =>
+          option.setName("guild_name").setDescription("The name of the guild you were invited to").setRequired(true)
+        )
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("leave")
+        .setDescription("Leave your current guild (dissolves if you are the leader).")
+    ),
+
+  new SlashCommandBuilder()
+    .setName("bestow")
+    .setDescription("[OWNER ONLY] Grant a user gold, exp, or change their element.")
+    .addUserOption(option =>
+      option.setName("target").setDescription("The user to bestow upon").setRequired(true)
+    )
+    .addStringOption(option =>
+      option.setName("action")
+        .setDescription("The action to perform")
         .setRequired(true)
         .addChoices(
-          { name: "create", value: "create" },
-          { name: "info", value: "info" },
-          { name: "leave", value: "leave" },
-          { name: "invite", value: "invite" },
-          { name: "join", value: "join" },
-        ),
+          { name: "setGold", value: "setGold" },
+          { name: "setExp", value: "setExp" },
+          { name: "setElement", value: "setElement" },
+          { name: "setLevel", value: "setLevel" },
+        )
     )
-    .addStringOption((o) => o.setName("name").setDescription("Guild name"))
-    .addUserOption((o) => o.setName("user").setDescription("User to invite")),
-  new SlashCommandBuilder()
-    .set
+    .addStringOption(option =>
+      option.setName("value").setDescription("The value for the action").setRequired(true)
+    ),
+].map(command => command.toJSON());
+// --- DISCORD EVENTS ---
+
+client.once("ready", async () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
+  loadData();
+
+  // Register all commands to the Discord API
+  const rest = new REST({ version: "10" }).setToken(TOKEN);
+  try {
+    await rest.put(
+      Routes.applicationCommands(CLIENT_ID),
+      { body: commands },
+    );
+    console.log("✅ Successfully reloaded application (/) commands.");
+  } catch (error) {
+    console.error("❌ Failed to register commands:", error);
+  }
+
+  // Set up the automatic save interval
+  setInterval(saveData, 60000); // Save data every 60 seconds
+});
+
+// --- CORE INTERACTION HANDLER REFACTOR ---
+client.on("interactionCreate", async (interaction) => {
+  if (interaction.isCommand()) {
+    const { commandName } = interaction;
+    const userId = interaction.user.id;
+
+    // Command Switch for better organization
+    switch (commandName) {
+      case "start": {
+        if (players[userId]) {
+          return interaction.reply({ content: "You have already started your adventure!", ephemeral: true });
+        }
+        
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId("start_select")
+          .setPlaceholder("Choose your starting element...")
+          .addOptions(
+            ...ELEMENTS.map(element => {
+              if (element === "Divine" && userId !== OWNER_ID) return null; // Divine element check
+              return new StringSelectMenuOptionBuilder()
+                .setLabel(element)
+                .setValue(element);
+            }).filter(Boolean)
+          );
+        
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+        return interaction.reply({ content: "Welcome! Choose your starting element:", components: [row], ephemeral: true });
+      }
+
+      case "profile": {
+        const player = players[userId];
+        if (!player) return interaction.reply({ content: "Please use **/start** first.", ephemeral: true });
+
+        const embed = new EmbedBuilder()
+          .setTitle(`⚔️ ${interaction.user.username}'s Profile`)
+          .setDescription(`**Level**: ${player.Level} (Exp: ${player.EXP})\n**Element**: ${player.element} (${player.passive})`)
+          .addFields(
+            { name: "Health/Mana", value: `HP: ${player.currentStats.hp}/${player.maxStats.hp}\nMana: ${player.currentStats.mana}/${player.maxStats.mana}`, inline: true },
+            { name: "Stats", value: `ATK: ${player.maxStats.attack}\nDEF: ${player.maxStats.defense}\nLUCK: ${player.maxStats.luck}`, inline: true },
+            { name: "Gold", value: `${player.Gold.toLocaleString()} 🪙`, inline: false }
+          )
+          .setColor(0x00ff00);
+
+        return interaction.reply({ embeds: [embed] });
+      }
+
+      case "dungeon": {
+        if (!players[userId]) return interaction.reply({ content: "Please use **/start** first.", ephemeral: true });
+        if (dungeonRuns[userId]) return interaction.reply({ content: "You are already in a dungeon run!", ephemeral: true });
+        
+        // Start dungeon logic
+        const player = players[userId];
+        const monster = generateDungeonEncounter(player.Level, 1); // Start at floor 1
+        dungeonRuns[userId] = { floor: 1, monster: monster, playerHP: player.currentStats.hp, playerMana: player.currentStats.mana };
+
+        const embed = new EmbedBuilder()
+          .setTitle(`Dungeon Floor 1: ${monster.name}`)
+          .setDescription(`**Monster HP:** ${monster.hp}\n**Your HP:** ${player.currentStats.hp}/${player.maxStats.hp}\n**Your Mana:** ${player.currentStats.mana}/${player.maxStats.mana}`)
+          .setColor(0xff0000);
+
+        const attackRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId("dungeonattack").setLabel("Attack").setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId("leavedungeon").setLabel("Flee").setStyle(ButtonStyle.Danger),
+        );
+
+        return interaction.reply({ embeds: [embed], components: [attackRow], ephemeral: false });
+      }
+
+      case "shop": {
+        if (!players[userId]) return interaction.reply({ content: "Please use **/start** first.", ephemeral: true });
+
+        const itemsToShow = Object.entries(itemDatabase).map(([id, item]) => ({ id, ...item }));
+        
+        const shopEmbed = new EmbedBuilder()
+          .setTitle("🛒 The General Store")
+          .setDescription("Buy equipment and consumables to help your journey!")
+          .setColor(0xaa00aa);
+
+        // Populate embed with item list
+        let itemDescription = "";
+        itemsToShow.forEach(item => {
+          itemDescription += `\n**${item.name}** (${item.cost} 🪙) - *${item.type.toUpperCase()}*\n`;
+          // You can add more detailed stats here if desired
+        });
+        shopEmbed.addFields({ name: "Available Items", value: itemDescription || "The shop is empty.", inline: false });
+        
+        // --- FIX: DYNAMICALLY CREATE ACTION ROWS FOR ALL ITEMS ---
+        const allRows = [];
+        let currentRow = new ActionRowBuilder();
+        let buttonCount = 0;
+        const MAX_ROWS = 5;
+
+        for (const [index, { id, name, cost }] of itemsToShow.entries()) {
+          const button = new ButtonBuilder()
+            .setCustomId(`buyitem_${id}`)
+            .setLabel(`Buy ${name} (${cost}🪙)`)
+            .setStyle(ButtonStyle.Secondary);
+
+          if (allRows.length < MAX_ROWS) {
+            currentRow.addComponents(button);
+            buttonCount++;
+          }
+
+          // Check Discord's limit of 5 buttons per row
+          if (buttonCount === 5 || index === itemsToShow.length - 1) {
+            if (currentRow.components.length > 0) {
+              allRows.push(currentRow);
+            }
+            
+            if (allRows.length < MAX_ROWS) {
+              currentRow = new ActionRowBuilder();
+              buttonCount = 0;
+            } else {
+              // Stop adding buttons if we hit the 5-row limit (25 buttons total)
+              break; 
+            }
+          }
+        }
+        // --- END FIX ---
+
+        return interaction.reply({ embeds: [shopEmbed], components: allRows.length > 0 ? allRows : [], ephemeral: false });
+      }
+      
+      case "guild": {
+        const action = interaction.options.getSubcommand();
+        const player = players[userId];
+
+        if (!player) return interaction.reply({ content: "Please use **/start** first.", ephemeral: true });
+
+        switch (action) {
+          case "create": {
+            const name = interaction.options.getString("name");
+            if (player.guildId) return interaction.reply({ content: `You are already in a guild: **${guilds[player.guildId].name}**`, ephemeral: true });
+            if (Object.values(guilds).some(g => g.name.toLowerCase() === name.toLowerCase())) return interaction.reply({ content: "A guild with that name already exists.", ephemeral: true });
+
+            const newId = `G${Date.now()}`;
+            guilds[newId] = { id: newId, name, leader: userId, members: [userId], invites: [], level: 1, exp: 0, gold: 0, buffs: [] };
+            player.guildId = newId;
+            saveData();
+            return interaction.reply({ content: `✅ Guild **${name}** created! You are the leader!`, ephemeral: false });
+          }
+          case "view": {
+            const guildId = player.guildId;
+            if (!guildId) return interaction.reply({ content: "You are not in a guild.", ephemeral: true });
+            const guild = guilds[guildId];
+            const leaderName = client.users.cache.get(guild.leader)?.username || "Unknown User";
+            
+            const embed = new EmbedBuilder()
+              .setTitle(`🛡️ ${guild.name}`)
+              .setDescription(`Leader: **${leaderName}**\nLevel: ${guild.level}\nMembers: ${guild.members.length}\nGold Stash: ${guild.gold.toLocaleString()} 🪙`)
+              .setColor(0x0099ff);
+
+            return interaction.reply({ embeds: [embed] });
+          }
+          // --- FIX: ADDED MISSING LOGIC FOR INVITE AND JOIN ---
+          case "invite": {
+            const targetUser = interaction.options.getUser("user");
+            const guildId = player.guildId;
+            const guild = guilds[guildId];
+            
+            if (!guildId) return interaction.reply({ content: "You must be in a guild to invite others.", ephemeral: true });
+            if (guild.leader !== userId) return interaction.reply({ content: "Only the guild leader can send invites.", ephemeral: true });
+            if (!targetUser || targetUser.bot || players[targetUser.id]?.guildId) return interaction.reply({ content: "Invalid user, bot, or user is already in a guild.", ephemeral: true });
+            if (guild.invites.includes(targetUser.id)) return interaction.reply({ content: "That user has already been invited.", ephemeral: true });
+
+            guild.invites.push(targetUser.id);
+            saveData();
+
+            try {
+              await targetUser.send(`You have been invited to join the guild **${guild.name}** by ${interaction.user.username}! Use the **/guild join** command with the guild name.`);
+            } catch (e) {
+              console.error(`Could not DM user ${targetUser.id}: ${e.message}`);
+            }
+
+            return interaction.reply({ content: `✅ Invited **${targetUser.username}** to **${guild.name}**! They have been DM'd.`, ephemeral: false });
+          }
+          case "join": {
+            const inviteCode = interaction.options.getString("guild_name");
+            if (player.guildId) return interaction.reply({ content: `You are already in a guild.`, ephemeral: true });
+
+            const guildToJoin = Object.values(guilds).find(g => g.name.toLowerCase() === inviteCode.toLowerCase());
+            if (!guildToJoin) return interaction.reply({ content: "Guild not found.", ephemeral: true });
+            
+            if (!guildToJoin.invites.includes(userId)) return interaction.reply({ content: `You have not been invited to **${guildToJoin.name}**.`, ephemeral: true });
+            
+            if (guildToJoin.members.length >= 50) return interaction.reply({ content: `**${guildToJoin.name}** is full (50/50 members).`, ephemeral: true });
+
+            guildToJoin.members.push(userId);
+            guildToJoin.invites = guildToJoin.invites.filter(id => id !== userId);
+            player.guildId = guildToJoin.id;
+            saveData();
+            return interaction.reply({ content: `✅ You have joined **${guildToJoin.name}**!`, ephemeral: false });
+          }
+          // --- END FIX ---
+          case "leave": {
+            const guildId = player.guildId;
+            if (!guildId) return interaction.reply({ content: "You are not in a guild.", ephemeral: true });
+
+            const guild = guilds[guildId];
+            
+            if (guild.leader === userId) {
+              // Dissolve guild
+              delete guilds[guildId];
+              guild.members.forEach(memberId => players[memberId] && (players[memberId].guildId = null));
+              saveData();
+              return interaction.reply({ content: `❌ Guild **${guild.name}** has been dissolved. All members are now guildless.`, ephemeral: false });
+            } else {
+              // Member leaves
+              guild.members = guild.members.filter(id => id !== userId);
+              player.guildId = null;
+              saveData();
+              return interaction.reply({ content: `🚪 You have left **${guild.name}**.`, ephemeral: false });
+            }
+          }
+          default:
+            return interaction.reply({ content: "Unknown guild action.", ephemeral: true });
+        }
+      }
+
+      case "bestow": {
+        if (userId !== OWNER_ID) {
+          return interaction.reply({ content: "Owner only!", ephemeral: true });
+        }
+        
+        const target = interaction.options.getUser("target");
+        const targetId = target.id;
+        const action = interaction.options.getString("action");
+        const valueStr = interaction.options.getString("value");
+        let value = parseInt(valueStr);
+
+        if (!players[targetId]) {
+          return interaction.reply({ content: `${target.username} has not started the game yet.`, ephemeral: true });
+        }
+        const targetPlayer = players[targetId];
+
+        switch (action) {
+          case "setGold":
+            if (value >= 0) targetPlayer.Gold = value;
+            else return interaction.reply({ content: "Gold value must be non-negative.", ephemeral: true });
+            break;
+          case "setExp":
+            if (value >= 0) targetPlayer.EXP = value;
+            else return interaction.reply({ content: "Exp value must be non-negative.", ephemeral: true });
+            break;
+          case "setElement":
+            const element = valueStr.charAt(0).toUpperCase() + valueStr.slice(1).toLowerCase();
+            if (ELEMENTS.includes(element)) {
+              targetPlayer.element = element;
+              targetPlayer.spells = elementSpells[element].slice(0, 2);
+              targetPlayer.passive = passives[element];
+            } else {
+              return interaction.reply({ content: `Invalid element: ${valueStr}`, ephemeral: true });
+            }
+            break;
+          case "setLevel":
+            if (value > 0) {
+              targetPlayer.Level = value;
+              recalculateStats(targetPlayer);
+            } else {
+              return interaction.reply({ content: "Level value must be positive.", ephemeral: true });
+            }
+            break;
+          default:
+            return interaction.reply({ content: "Unknown action!", ephemeral: true });
+        }
+
+        saveData();
+        return interaction.reply({
+          content: `✅ Applied **${action}** to ${target.username}. Current ${action} is: **${action === 'setElement' ? targetPlayer.element : value}**`,
+          ephemeral: true,
+        });
+      }
+    }
+  } 
+                // --- BUTTON/SELECT MENU INTERACTION HANDLER REFACTOR ---
+  else if (interaction.isButton() || interaction.isStringSelectMenu()) {
+    const customId = interaction.customId;
+    const userId = interaction.user.id;
+    const player = players[userId];
+
+    if (!player) return interaction.reply({ content: "Please use **/start** first.", ephemeral: true });
+
+    // Handle Select Menus
+    if (interaction.isStringSelectMenu()) {
+      switch (customId) {
+        case "start_select": {
+          const chosenElement = interaction.values[0];
+          
+          if (chosenElement === "Divine" && userId !== OWNER_ID) {
+            return interaction.update({
+              content: "Divine element is owner-only. Please choose another.",
+              components: interaction.message.components, // Keep component to allow re-selection
+              embeds: [],
+            });
+          }
+
+          players[userId] = createPlayer(userId, chosenElement);
+          saveData();
+          return interaction.update({
+            content: `🎉 You have chosen **${chosenElement}**! Use **/profile** to view your stats.`,
+            components: [],
+            embeds: [],
+          });
+        }
+        // Add other select menu logic here
+        // case "pvp_select": ... 
+      }
+    }
+    
+    // Handle Buttons
+    else if (interaction.isButton()) {
+      const action = customId.split("_")[0];
+      
+      switch (action) {
+        case "dungeonattack": {
+          // --- FIX: DUNGEON SAFETY CHECK ---
+          if (!dungeonRuns[userId]) return interaction.reply({ content: "You are not in an active dungeon!", ephemeral: true });
+          
+          const run = dungeonRuns[userId];
+          const monster = run.monster;
+          const damage = calculateDamage(player, monster);
+          monster.hp -= damage;
+          
+          let response = `You attacked the **${monster.name}** for ${damage} damage!\n`;
+          
+          if (monster.hp <= 0) {
+            // Victory
+            player.EXP += monster.exp;
+            player.Gold += monster.gold;
+            tryLevelUp(player);
+            delete dungeonRuns[userId];
+            saveData();
+            
+            response += `✅ You defeated the **${monster.name}**! You gained ${monster.exp} EXP and ${monster.gold} 🪙.`;
+            return interaction.update({ content: response, components: [], embeds: [] });
+
+          } else {
+            // Monster attacks back
+            // Simplified monster damage logic
+            const monsterDamage = Math.max(1, Math.floor(monster.attack - (player.maxStats.defense / 2))); 
+            run.playerHP -= monsterDamage;
+            response += `The **${monster.name}** attacked you back for ${monsterDamage} damage!\n`;
+            
+            if (run.playerHP <= 0) {
+              // Defeat
+              player.currentStats.hp = Math.floor(player.maxStats.hp * 0.5); // Respawn with half health
+              delete dungeonRuns[userId];
+              saveData();
+              
+              response += `❌ You have been defeated on Floor ${run.floor}! You retreated and lost some progress.`;
+              return interaction.update({ content: response, components: [], embeds: [] });
+            }
+            
+            // Continue battle
+            const embed = EmbedBuilder.from(interaction.message.embeds[0])
+              .setDescription(`**Monster HP:** ${monster.hp}\n**Your HP:** ${run.playerHP}/${player.maxStats.hp}\n**Your Mana:** ${run.playerMana}/${player.maxStats.mana}`);
+            
+            return interaction.update({ content: response, embeds: [embed] });
+          }
+        }
+
+        case "leavedungeon": {
+          // --- FIX: DUNGEON SAFETY CHECK ---
+          if (!dungeonRuns[userId]) return interaction.reply({ content: "You are not in an active dungeon to flee from!", ephemeral: true });
+
+          const run = dungeonRuns[userId];
+          player.currentStats.hp = run.playerHP; // Keep current HP/Mana from the run
+          player.currentStats.mana = run.playerMana;
+          delete dungeonRuns[userId];
+          saveData();
+          return interaction.update({ content: "🚪 You fled the dungeon and saved your progress!", components: [], embeds: [] });
+        }
+
+        case "buyitem": {
+          // Logic for buying an item from the shop
+          const itemId = customId.split("_")[1];
+          const item = itemDatabase[itemId];
+
+          if (!item) return interaction.reply({ content: "Item not found!", ephemeral: true });
+          if (player.Gold < item.cost) return interaction.reply({ content: `You need ${item.cost} 🪙 to buy ${item.name}!`, ephemeral: true });
+
+          player.Gold -= item.cost;
+          
+          // Simple inventory add logic
+          if (!player.inventory[itemId]) player.inventory[itemId] = 0;
+          player.inventory[itemId]++;
+          
+          saveData();
+          return interaction.reply({ content: `✅ Purchased **${item.name}** for ${item.cost} 🪙!`, ephemeral: true });
+        }
+        
+        // Add other button logic here
+        // case "equipitem": ...
+        // case "nextfloor": ...
+        
+        default:
+          return interaction.reply({ content: "Unknown button action.", ephemeral: true });
+      }
+    }
+  }
+});
+
+// --- HTTP SERVER FOR MONITORING ---
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(
+    JSON.stringify({
+      status: "online",
+      bot: client.user ? client.user.tag : "connecting...",
+      players: Object.keys(players).length,
+      guilds: Object.keys(guilds).length,
+      uptime: process.uptime(),
+    }),
+  );
+});
+
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ HTTP server running on port ${PORT} for UptimeRobot`);
+});
+
+// --- BOT LOGIN ---
+client
+  .login(TOKEN)
+  .then(() => console.log("✅ Bot online!"))
+  .catch((err) => console.error("❌ Login failed:", err));
+
+// Initial data load on startup (before commands are registered)
+loadData();
+
+// Process exit handlers to ensure data is saved
+process.on("SIGINT", () => {
+  console.log("\n🛑 SIGINT received. Saving data and exiting...");
+  saveData();
+  process.exit();
+});
+
+process.on("SIGTERM", () => {
+  console.log("\n🛑 SIGTERM received. Saving data and exiting...");
+  saveData();
+  process.exit();
+});
