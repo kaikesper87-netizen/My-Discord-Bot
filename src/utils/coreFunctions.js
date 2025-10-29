@@ -1,3 +1,32 @@
+// Base XP needed to reach the next level
+const BASE_XP = 100;
+// Multiplier for subsequent levels
+const XP_GROWTH_FACTOR = 1.5;
+
+// Function to calculate XP needed for the next level
+export function getRequiredXP(level) {
+    if (level <= 0) return BASE_XP;
+    return Math.floor(BASE_XP * Math.pow(XP_GROWTH_FACTOR, level - 1));
+}
+
+// Base stats for a Level 1 player
+const BASE_STATS = {
+    hp: 100,
+    mana: 50,
+    attack: 10,
+    defense: 5,
+    luck: 1
+};
+
+// Stat increases per level
+const STAT_GROWTH = {
+    hp: 15,
+    mana: 5,
+    attack: 2,
+    defense: 1,
+    luck: 0.2
+};
+
 // src/utils/coreFunctions.js
 
 import fs from "fs";
