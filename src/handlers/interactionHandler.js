@@ -1,14 +1,16 @@
 // src/handlers/interactionHandler.js
 
-// 1. Import all command files (We will need to add more commands here as you build them)
+// 1. Import all command files (We now include profile.js)
 import * as StartCommand from '../commands/start.js'; 
 import * as PvPCommand from '../commands/pvp.js'; 
+import * as ProfileCommand from '../commands/profile.js'; // <-- NEW IMPORT
 
 // Map to easily find command execution logic
 const commandMap = new Map([
     // Key: Command Name, Value: The execute function from the module
     ['start', StartCommand.execute], 
     ['pvp', PvPCommand.execute], 
+    ['profile', ProfileCommand.execute], // <-- NEW REGISTRATION
 ]);
 
 
@@ -64,7 +66,7 @@ export async function handleInteraction(interaction, players, guilds, battles, c
                 // Send all battle-related components to the PvP module
                 return PvPCommand.handleComponent(interaction, client, battles);
 
-            // Add other component types here (e.g., case 'shop', case 'dungeon')
+            // Note: Profile does not need a component handler.
                 
             default:
                 // Ignore any buttons/menus not recognized by the bot
