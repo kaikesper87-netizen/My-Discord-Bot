@@ -1,25 +1,29 @@
 {
-  "name": "discord-rpg-bot",
-  "version": "2.0.0",
-  "description": "Advanced Discord RPG Bot with dungeons, inventory, quests, and guilds",
+  "name": "your-elemental-rpg-bot",
+  "version": "1.0.0",
+  "description": "A modular, turn-based RPG Discord bot with PvP.",
+  
   "main": "src/index.js",
-  "type": "module",
+  
+  "type": "module", 
+  
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node src/index.js"
+    "dev": "node --watch src/index.js"
   },
+  
   "keywords": [
     "discord",
-    "bot",
+    "discordjs",
+    "modular",
     "rpg",
-    "game"
+    "pvp"
   ],
   "author": "",
   "license": "ISC",
+  
   "dependencies": {
-    "@discordjs/rest": "^2.6.0",
-    "@octokit/rest": "^22.0.0",
-    "discord.js": "^14.24.1",
-    "dotenv": "^16.6.1"
+    "discord.js": "^14.17.1", 
+    "dotenv": "^16.4.5" 
   }
 }
