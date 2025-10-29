@@ -1,0 +1,86 @@
+{
+  "1432520417544769590": {
+    "username": "parkjinwoo0693",
+    "element": "Divine",
+    "HP": 100,
+    "Mana": 100,
+    "maxHP": 110,
+    "maxMana": 110,
+    "attack": 0,
+    "defense": 0,
+    "Rank": "Novice Mage",
+    "Gold": 100,
+    "EXP": 0,
+    "Level": 1,
+    "spells": [
+      "Divine Bolt",
+      "Radiant Judgement"
+    ],
+    "passive": "All stats +10%",
+    "cooldowns": {},
+    "prestige": 0,
+    "pvpPoints": 0,
+    "dungeonFloor": 1,
+    "inventory": {},
+    "equipment": {
+      "weapon": null,
+      "armor": null,
+      "accessory": null
+    },
+    "statusEffects": {},
+    "achievements": [],
+    "quests": {
+      "daily_dungeon": {
+        "type": "daily",
+        "desc": "Clear 3 dungeon floors",
+        "progress": 0,
+        "goal": 3,
+        "reward": {
+          "gold": 150,
+          "exp": 100
+        },
+        "expires": 1761810574159
+      },
+      "daily_pvp": {
+        "type": "daily",
+        "desc": "Win 2 PvP battles",
+        "progress": 0,
+        "goal": 2,
+        "reward": {
+          "gold": 200,
+          "exp": 150
+        },
+        "expires": 1761810574159
+      },
+      "weekly_boss": {
+        "type": "weekly",
+        "desc": "Defeat 5 bosses",
+        "progress": 0,
+        "goal": 5,
+        "reward": {
+          "gold": 1000,
+          "exp": 800
+        },
+        "expires": 1762328974159
+      },
+      "weekly_level": {
+        "type": "weekly",
+        "desc": "Gain 5 levels",
+        "progress": 0,
+        "goal": 5,
+        "reward": {
+          "gold": 800,
+          "exp": 500
+        },
+        "expires": 1762328974159
+      }
+    },
+    "guildId": null,
+    "stats": {
+      "pvpWins": 0,
+      "pvpLosses": 0,
+      "monstersDefeated": 0,
+      "bossesDefeated": 0
+    }
+  }
+}
