@@ -272,6 +272,8 @@ const itemDatabase = {
   },
 };
 
+export { itemDatabase };
+
 const monsters = {
   Goblin: { HP: 40, attack: 8, defense: 2, exp: 25, gold: 10 },
   Orc: { HP: 70, attack: 15, defense: 5, exp: 50, gold: 25 },
