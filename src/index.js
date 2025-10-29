@@ -791,9 +791,6 @@ const commands = [
 ].map((cmd) => cmd.toJSON());
 
 // === AUTO-LOAD COMMANDS FROM ./commands FOLDER ===
-import fs from "fs";
-import path from "path";
-
 const commandsDir = path.join(__dirname, "commands");
 
 if (fs.existsSync(commandsDir)) {
