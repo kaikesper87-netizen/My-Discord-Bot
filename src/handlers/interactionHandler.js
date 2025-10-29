@@ -64,7 +64,7 @@ export async function handleInteraction(interaction, players, guilds, battles, c
             case 'pvp': // Handles 'pvp_accept' and 'pvp_decline' buttons
             case 'fight': // Handles 'fight_attack' and 'fight_defend' buttons
                 // Send all battle-related components to the PvP module
-                return PvPCommand.handleComponent(interaction, client, battles);
+                return PvPCommand.handleComponent(interaction, client, battles, players);
 
             // Note: Profile does not need a component handler.
                 
