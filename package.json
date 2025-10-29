@@ -1,0 +1,25 @@
+{
+  "name": "discord-rpg-bot",
+  "version": "2.0.0",
+  "description": "Advanced Discord RPG Bot with dungeons, inventory, quests, and guilds",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "rpg",
+    "game"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@discordjs/rest": "^2.6.0",
+    "@octokit/rest": "^22.0.0",
+    "discord.js": "^14.24.1",
+    "dotenv": "^16.6.1"
+  }
+}
