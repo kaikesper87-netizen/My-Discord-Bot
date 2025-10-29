@@ -790,6 +790,21 @@ const commands = [
     ),
 ].map((cmd) => cmd.toJSON());
 
+// === AUTO-LOAD COMMANDS FROM ./commands FOLDER ===
+import fs from "fs";
+import path from "path";
+
+const commandsDir = path.join(__dirname, "commands");
+
+if (fs.existsSync(commandsDir)) {
+  const commandFiles = fs.readdirSync(commandsDir).filter(f => f.endsWith(".js"));
+  for (const file of commandFiles) {
+    const { data } = await import(`./commands/${file}`);
+    if (data) commands.push(data.toJSON());
+    console.log(`✅ Loaded command: ${data.name}`);
+  }
+}
+
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 (async () => {
