@@ -137,33 +137,40 @@ export const passives = {
     Metal: "Bonus Defense +5",
 };
 
-// --- 4. STAT CALCULATION ---
-
+/**
+ * Calculates and sets the player's max stats based on their current level,
+ * and applies passive bonuses. Also ensures current HP/Mana don't exceed max.
+ * @param {object} player - The player object to update.
+ */
 export function recalculateStats(player) {
-    // 1. Base stat calculation
-    player.maxStats = {
-      hp: 100 + (player.Level * 10),
-      mana: 50 + (player.Level * 5),
-      attack: 10 + (player.Level * 2),
-      defense: 5 + (player.Level * 1),
-      luck: 0,
-    };
-    
-    // 2. Apply passive bonuses (simple example)
-    const passive = player.passive;
+    const level = player.Level;
+
+    // 1. Base stats with level scaling
+    player.maxStats.hp = BASE_STATS.hp + (STAT_GROWTH.hp * (level - 1));
+    player.maxStats.mana = BASE_STATS.mana + (STAT_GROWTH.mana * (level - 1));
+    player.maxStats.attack = BASE_STATS.attack + (STAT_GROWTH.attack * (level - 1));
+    player.maxStats.defense = BASE_STATS.defense + (STAT_GROWTH.defense * (level - 1));
+    player.maxStats.luck = BASE_STATS.luck + (STAT_GROWTH.luck * (level - 1));
+    player.maxStats.luck = parseFloat(player.maxStats.luck.toFixed(2));
+
+    // 2. Apply passive bonuses
+    const passive = player.passive || [];
 
     if (passive.includes("Bonus Attack")) {
         player.maxStats.attack += 10;
-    } else if (passive.includes("Bonus Defense")) {
+    }
+    if (passive.includes("Bonus Defense")) {
         player.maxStats.defense += 5;
-    } 
-    // You would add more specific checks for evasion, crit, etc. here
+    }
+    // Add more passive effects here as needed (crit, evasion, etc.)
 
-    // 3. Update current stats (ensures current HP/Mana don't exceed max after level up/recalc)
+    // 3. Update current stats to not exceed max
+    if (!player.currentStats) player.currentStats = {};
+    
     if (!player.currentStats.hp || player.currentStats.hp > player.maxStats.hp) {
         player.currentStats.hp = player.maxStats.hp;
     }
     if (!player.currentStats.mana || player.currentStats.mana > player.maxStats.mana) {
         player.currentStats.mana = player.maxStats.mana;
     }
-}
+                         }
