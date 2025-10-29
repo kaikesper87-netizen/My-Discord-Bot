@@ -29,8 +29,8 @@ export async function execute(interaction, client) {
     const channelId = interaction.channelId;
 
     // --- Validation Checks ---
-    if (!interaction.client.players[challengerId]) return interaction.reply({ content: "Please use **/start** first.", ephemeral: true });
-    if (!interaction.client.players[opponentId]) return interaction.reply({ content: `${opponentUser.username} hasn't started yet!`, ephemeral: true });
+    if (!client.players[challengerId]) return interaction.reply({ content: "Please use **/start** first.", ephemeral: true });
+    if (!client.players[opponentId]) return interaction.reply({ content: `${opponentUser.username} hasn't started yet!`, ephemeral: true });
     if (challengerId === opponentId) return interaction.reply({ content: "You can't challenge yourself!", ephemeral: true });
     if (battles[channelId]) return interaction.reply({ content: "There is already a battle active in this channel! Finish it first.", ephemeral: true });
 
@@ -68,9 +68,7 @@ export async function handleComponent(interaction, client, battles, players) {
     // --- A. Handle Challenge Buttons ---
     if (actionType === "pvp") {
         if (!battle) {
-            try { 
-                await interaction.update({ content: "This challenge has expired.", components: [] }); 
-            } catch(e) { console.error(e); }
+            try { await interaction.update({ content: "This challenge has expired.", components: [] }); } catch(e) { console.error(e); }
             return;
         }
 
@@ -78,24 +76,18 @@ export async function handleComponent(interaction, client, battles, players) {
         const opponentPlayer = players[battle.opponentId];
 
         if (!challengerPlayer || !opponentPlayer) {
-            try { 
-                await interaction.update({ content: "Error: Player data could not be loaded. Battle aborted.", components: [] }); 
-            } catch(e) { console.error(e); }
+            try { await interaction.update({ content: "Error: Player data could not be loaded. Battle aborted.", components: [] }); } catch(e) { console.error(e); }
             return;
         }
 
         // Ensure only the challenged user can accept/decline
         if (userId !== battle.opponentId) {
-            try { 
-                await interaction.reply({ content: "This challenge isn't for you.", ephemeral: true }); 
-            } catch(e) { console.error(e); }
+            try { await interaction.reply({ content: "This challenge isn't for you.", ephemeral: true }); } catch(e) { console.error(e); }
             return;
         }
 
         if (actionDetail === "decline") {
-            try {
-                await interaction.update({ content: `✅ **${interaction.user.username}** has **declined** the duel.`, components: [] });
-            } catch(e) { console.error(e); }
+            try { await interaction.update({ content: `✅ **${interaction.user.username}** has **declined** the duel.`, components: [] }); } catch(e) { console.error(e); }
             return;
         } 
         
@@ -113,15 +105,12 @@ export async function handleComponent(interaction, client, battles, players) {
                 B_currentHP: opponent.maxStats.hp,
                 A_defending: false,
                 B_defending: false,
-                lastActionText: `⚔️ **${challenger.element} ${client.users.cache.get(challengerPlayer) || "Challenger"}** vs **${opponent.element} ${interaction.user.username}** has begun!`,
+                lastActionText: `⚔️ **${challenger.element} ${await getUsername(client, challenger)}** vs **${opponent.element} ${await getUsername(client, opponent)}** has begun!`,
             };
 
-            const { message, components } = generateBattleMessage(battles[channelId], client, players);
+            const { message, components } = await generateBattleMessage(battles[channelId], client, players);
 
-            try {
-                await interaction.update({ content: message, components });
-            } catch(e) { console.error(e); }
-
+            try { await interaction.update({ content: message, components }); } catch(e) { console.error(e); }
             return;
         }
     }
@@ -138,27 +127,27 @@ export async function handleComponent(interaction, client, battles, players) {
             return;
         }
 
-        processCombatTurn(actionDetail, battle, players);
+        await processCombatTurn(actionDetail, battle, players, client);
 
         // Check win condition
         if (battle.A_currentHP <= 0 || battle.B_currentHP <= 0) {
-            const result = String(endBattle(battle, players, client));
+            const result = await endBattle(battle, players, client);
             try { await interaction.update({ content: result, components: [] }); } catch(e) { console.error(e); }
             delete battles[interaction.channelId];
         } else {
-            const { message, components } = generateBattleMessage(battle, client, players);
+            const { message, components } = await generateBattleMessage(battle, client, players);
             try { await interaction.update({ content: message, components }); } catch(e) { console.error(e); }
         }
     }
 }
 
 // --- 4. HELPERS ---
-function generateBattleMessage(battle, client, players) {
+async function generateBattleMessage(battle, client, players) {
     const A = players[battle.challengerId];
     const B = players[battle.opponentId];
 
-    const userA = client.users.cache.get(battle.challengerId)?.username || "Challenger";
-    const userB = client.users.cache.get(battle.opponentId)?.username || "Opponent";
+    const userA = await getUsername(client, A);
+    const userB = await getUsername(client, B);
 
     const turnUser = battle.currentTurnId === battle.challengerId ? userA : userB;
 
@@ -181,7 +170,7 @@ It is **${turnUser}'s** turn. Choose your action:`;
     return { message, components };
 }
 
-function processCombatTurn(action, battle, players) {
+async function processCombatTurn(action, battle, players, client) {
     const currentTurnId = battle.currentTurnId;
     const opponentId = currentTurnId === battle.challengerId ? battle.opponentId : battle.challengerId;
     const user = currentTurnId === battle.challengerId ? 'A' : 'B';
@@ -202,17 +191,19 @@ function processCombatTurn(action, battle, players) {
         if (opp === 'A') battle.A_currentHP = Math.max(0, battle.A_currentHP - damageTaken);
         else battle.B_currentHP = Math.max(0, battle.B_currentHP - damageTaken);
 
-        battle.lastActionText = `💥 ${client.users.cache.get(currentTurnId)?.username || "Player"} attacked for ${Math.round(damageTaken)} damage!`;
+        const attackerName = await getUsername(client, currentUser);
+        battle.lastActionText = `💥 ${attackerName} attacked for ${Math.round(damageTaken)} damage!`;
     } else if (action === "defend") {
         battle[`${user}_defending`] = true;
-        battle.lastActionText = `🛡️ ${client.users.cache.get(currentTurnId)?.username || "Player"} prepares to defend! Damage taken next turn is halved.`;
+        const defenderName = await getUsername(client, currentUser);
+        battle.lastActionText = `🛡️ ${defenderName} prepares to defend! Damage taken next turn is halved.`;
     }
 
     // Switch turn
     battle.currentTurnId = opponentId;
 }
 
-function endBattle(battle, players, client) {
+async function endBattle(battle, players, client) {
     let winnerId, loserId;
     if (battle.A_currentHP <= 0) {
         winnerId = battle.opponentId;
@@ -225,8 +216,8 @@ function endBattle(battle, players, client) {
     const winner = players[winnerId];
     const loser = players[loserId];
 
-    const winnerUsername = client.users.cache.get(winnerId)?.username || "Winner";
-    const loserUsername = client.users.cache.get(loserId)?.username || "Loser";
+    const winnerUsername = await getUsername(client, winner);
+    const loserUsername = await getUsername(client, loser);
 
     const moneyReward = 50;
     const xpReward = 100;
@@ -234,6 +225,17 @@ function endBattle(battle, players, client) {
     winner.money += moneyReward;
     winner.experience += xpReward;
 
-    return `🏆 **${winnerUsername}** has defeated ${loserUsername}! 
+    return `🏆 **${winnerUsername}** has defeated **${loserUsername}**!
 💰 **${winnerUsername}** gained ${xpReward} XP and ${moneyReward} money.`;
+}
+
+// Helper: Safely get a player's username
+async function getUsername(client, player) {
+    try {
+        const userId = player.id || player.userId || player.discordId;
+        const user = await client.users.fetch(userId);
+        return user.username;
+    } catch {
+        return "Unknown Player";
     }
+                                                             }
