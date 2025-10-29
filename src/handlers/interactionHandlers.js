@@ -1,13 +1,14 @@
 // src/handlers/interactionHandler.js
 
-// 1. Import all command files
+// 1. Import all command files (We will need to add more commands here as you build them)
 import * as StartCommand from '../commands/start.js'; 
-// import * as PvPCommand from '../commands/pvp.js'; // Will import this once created
+import * as PvPCommand from '../commands/pvp.js'; 
 
 // Map to easily find command execution logic
 const commandMap = new Map([
-    // Key: Command Name (e.g., 'start'), Value: The execute function from the module
+    // Key: Command Name, Value: The execute function from the module
     ['start', StartCommand.execute], 
+    ['pvp', PvPCommand.execute], 
 ]);
 
 
@@ -26,12 +27,11 @@ export async function handleInteraction(interaction, players, guilds, battles, c
 
         if (!executeFunction) {
             console.error(`No command found for ${commandName}`);
-            // Don't reply here, Discord will show "Application did not respond"
             return;
         }
 
         try {
-            // Execute the command's main function, passing the interaction and client
+            // Execute the command's main function
             await executeFunction(interaction, client);
         } catch (error) {
             console.error(`❌ Error executing command ${commandName}:`, error);
@@ -51,18 +51,18 @@ export async function handleInteraction(interaction, players, guilds, battles, c
     // ------------------------------------
     if (interaction.isButton() || interaction.isStringSelectMenu()) {
         const customId = interaction.customId;
-        const [actionType] = customId.split('_'); // e.g., 'start_select' -> actionType='start'
+        // The first part of the customId determines which module handles the action
+        const [actionType] = customId.split('_'); 
 
         switch (actionType) {
             case 'start':
-                // Send all start-related components (like 'start_select') to the start module's handler
+                // Handles 'start_select' menu
                 return StartCommand.handleComponent(interaction, client);
                 
-            case 'pvp':
-            case 'fight':
-                // These will be handled by the PvP module once we build it.
-                // return PvPCommand.handleComponent(interaction, client, battles);
-                return interaction.reply({ content: "PvP component logic not implemented yet!", ephemeral: true });
+            case 'pvp': // Handles 'pvp_accept' and 'pvp_decline' buttons
+            case 'fight': // Handles 'fight_attack' and 'fight_defend' buttons
+                // Send all battle-related components to the PvP module
+                return PvPCommand.handleComponent(interaction, client, battles);
 
             // Add other component types here (e.g., case 'shop', case 'dungeon')
                 
