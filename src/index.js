@@ -1305,76 +1305,152 @@ client.on("interactionCreate", async (interaction) => {
 
         if (player._lastCrit)
           description = "💥 **Critical Hit!**\n" + description;
+if (interaction.customId.startsWith("pvp_select_")) {
+  const parts = interaction.customId.split("_");
+  const targetId = parts[2];
+  const player = getPlayer(interaction.user.id);
+  const targetPlayer = getPlayer(targetId);
 
-        if (player._lastStatusEffect) {
-          applyStatusEffect(targetPlayer, player._lastStatusEffect);
-          description += `✨ Applied ${player._lastStatusEffect} to ${targetPlayer.username}!\n`;
-        }
+  if (!player || !targetPlayer) {
+    return interaction.update({
+      content: "Player not found.",
+      components: [],
+      embeds: [],
+    });
+  }
 
-        if (player.element === "Dark") {
-          const heal = Math.floor(actualDmg * 0.2);
-          applyHealing(player, heal);
-          description += `🩸 ${player.username} stole ${heal} HP!\n`;
-        }
-      }
+  const idsSorted = [interaction.user.id, targetId].sort();
+  const battleId = `${idsSorted[0]}_${idsSorted[1]}`;
 
-      const statusMsgs = processStatusEffects(player);
-      const targetStatusMsgs = processStatusEffects(targetPlayer);
-      if (statusMsgs.length > 0) description += statusMsgs.join("\n") + "\n";
-      if (targetStatusMsgs.length > 0)
-        description += targetStatusMsgs.join("\n") + "\n";
+  if (!battles[battleId]) {
+    let order = Math.random() < 0.5 ? [idsSorted[0], idsSorted[1]] : [idsSorted[1], idsSorted[0]];
+    battles[battleId] = { players: order, turn: 0 };
+  }
 
-      player.Mana = Math.min(player.Mana + 10, player.maxMana);
+  const battle = battles[battleId];
 
-      description += `\n${player.username}: ${player.HP}/${player.maxHP} | Mana: ${player.Mana}/${player.maxMana}\n${targetPlayer.username}: ${targetPlayer.HP}/${targetPlayer.maxHP} | Mana: ${targetPlayer.Mana}/${targetPlayer.maxMana}`;
+  if (battle.players[battle.turn] !== interaction.user.id) {
+    return interaction.update({
+      content: "Not your turn!",
+      components: [],
+      embeds: [],
+    });
+  }
 
-      const embed = new EmbedBuilder()
-        .setTitle("⚔️ PvP Battle")
-        .setDescription(description)
-        .setColor(0x9b59b6);
+  const currentPlayer = getPlayer(battle.players[battle.turn]);
+  const opponentPlayer = getPlayer(battle.players[(battle.turn + 1) % 2]);
 
-      if (player.HP <= 0 || targetPlayer.HP <= 0) {
-        const winner = player.HP > 0 ? player : targetPlayer;
-        const loser = player.HP > 0 ? targetPlayer : player;
+  const playerStunned = currentPlayer.statusEffects.stun?.duration > 0;
+  const playerFrozen = currentPlayer.statusEffects.freeze?.duration > 0;
 
-        winner.pvpPoints += 50;
-        winner.Gold += 100;
-        winner.stats.pvpWins++;
-        loser.stats.pvpLosses++;
+  if (playerStunned || playerFrozen) {
+    if (playerStunned) currentPlayer.statusEffects.stun.duration--;
+    else currentPlayer.statusEffects.freeze.duration--;
 
-        if (winner.quests && winner.quests.daily_pvp) {
-          winner.quests.daily_pvp.progress++;
-        }
+    const statusMsgs = processStatusEffects(currentPlayer);
+    battle.turn = (battle.turn + 1) % 2;
 
-        if (
-          !winner.achievements.includes("first_blood") &&
-          winner.stats.pvpWins === 1
-        ) {
-          winner.achievements.push("first_blood");
-          winner.Gold += achievements.first_blood.reward.gold;
-        }
+    const embed = new EmbedBuilder()
+      .setTitle(playerStunned ? "⚡ Stunned!" : "❄️ Frozen!")
+      .setDescription(
+        `${currentPlayer.username} is ${playerStunned ? "stunned" : "frozen"}!\n${statusMsgs.join("\n")}\n\n${currentPlayer.username}: ${currentPlayer.HP}/${currentPlayer.maxHP}\n${opponentPlayer.username}: ${opponentPlayer.HP}/${opponentPlayer.maxHP}`
+      )
+      .setColor(0xe74c3c);
 
-        delete battles[battleId];
-        saveData();
+    saveData();
+    return interaction.update({ embeds: [embed], components: [] });
+  }
 
-        embed.setTitle("🏆 Battle Over!");
-        embed.setDescription(
-          `${winner.username} wins!\n+50 PvP Points | +100 Gold`,
-        );
-        return interaction.update({ embeds: [embed], components: [] });
-      }
+  const spell = interaction.values[0];
+  const cost = getSpellCost(spell);
+  let damage = calculateDamage(currentPlayer, opponentPlayer, spell);
 
-      battle.turn = (battle.turn + 1) % 2;
-      const nextPlayer = getPlayer(battle.players[battle.turn]);
-      embed.setFooter({ text: `Next turn: ${nextPlayer.username}` });
+  if (currentPlayer.Mana < cost) {
+    if (currentPlayer.Mana === 0) damage = Math.floor(damage / 2);
+    else {
+      const factor = currentPlayer.Mana / cost;
+      damage = Math.floor(damage * factor);
+      currentPlayer.Mana = 0;
+    }
+  } else {
+    currentPlayer.Mana -= cost;
+  }
 
-      saveData();
-      return interaction.update({
-        embeds: [embed],
-        components: interaction.message.components,
-      });
+  let description = "";
+
+  if (damage < 0) {
+    const healAmt = -damage;
+    applyHealing(currentPlayer, healAmt);
+    description += `${currentPlayer.username} cast **${spell}** and healed **${healAmt} HP**!\n`;
+  } else {
+    const actualDmg = applyDamageToPlayer(opponentPlayer, damage);
+    description += `${currentPlayer.username} cast **${spell}** for **${actualDmg} damage**!\n`;
+
+    if (currentPlayer._lastCrit) description = "💥 **Critical Hit!**\n" + description;
+    if (currentPlayer._lastStatusEffect) {
+      applyStatusEffect(opponentPlayer, currentPlayer._lastStatusEffect);
+      description += `✨ Applied ${currentPlayer._lastStatusEffect} to ${opponentPlayer.username}!\n`;
+    }
+
+    if (currentPlayer.element === "Dark") {
+      const heal = Math.floor(actualDmg * 0.2);
+      applyHealing(currentPlayer, heal);
+      description += `🩸 ${currentPlayer.username} stole ${heal} HP!\n`;
     }
   }
+
+  const statusMsgs = processStatusEffects(currentPlayer);
+  const opponentStatusMsgs = processStatusEffects(opponentPlayer);
+  if (statusMsgs.length > 0) description += statusMsgs.join("\n") + "\n";
+  if (opponentStatusMsgs.length > 0) description += opponentStatusMsgs.join("\n") + "\n";
+
+  currentPlayer.Mana = Math.min(currentPlayer.Mana + 10, currentPlayer.maxMana);
+
+  description += `\n${currentPlayer.username}: ${currentPlayer.HP}/${currentPlayer.maxHP} | Mana: ${currentPlayer.Mana}/${currentPlayer.maxMana}\n${opponentPlayer.username}: ${opponentPlayer.HP}/${opponentPlayer.maxHP} | Mana: ${opponentPlayer.Mana}/${opponentPlayer.maxMana}`;
+
+  const embed = new EmbedBuilder().setTitle("⚔️ PvP Battle").setDescription(description).setColor(0x9b59b6);
+
+  if (currentPlayer.HP <= 0 || opponentPlayer.HP <= 0) {
+    const winner = currentPlayer.HP > 0 ? currentPlayer : opponentPlayer;
+    const loser = currentPlayer.HP > 0 ? opponentPlayer : currentPlayer;
+
+    winner.pvpPoints += 50;
+    winner.Gold += 100;
+    winner.stats.pvpWins++;
+    loser.stats.pvpLosses++;
+
+    if (winner.quests?.daily_pvp) winner.quests.daily_pvp.progress++;
+    if (!winner.achievements.includes("first_blood") && winner.stats.pvpWins === 1) {
+      winner.achievements.push("first_blood");
+      winner.Gold += achievements.first_blood.reward.gold;
+    }
+
+    delete battles[battleId];
+    saveData();
+
+    embed.setTitle("🏆 Battle Over!");
+    embed.setDescription(`${winner.username} wins!\n+50 PvP Points | +100 Gold`);
+
+    return interaction.update({ embeds: [embed], components: [] });
+  }
+
+  battle.turn = (battle.turn + 1) % 2;
+  const nextPlayer = getPlayer(battle.players[battle.turn]);
+
+  const spellOptions = nextPlayer.spells.map(spell => ({ label: spell, value: spell }));
+
+  const row = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`pvp_select_${nextPlayer.id}`)
+      .setPlaceholder(`${nextPlayer.username}'s turn (${nextPlayer.element}) - Choose a spell`)
+      .addOptions(spellOptions)
+  );
+
+  embed.setFooter({ text: `Next turn: ${nextPlayer.username}` });
+
+  saveData();
+  return interaction.update({ embeds: [embed], components: [row] });
+}
 
   if (!interaction.isChatInputCommand()) return;
 
