@@ -554,29 +554,36 @@ client.on("interactionCreate", async (interaction) => {
     // Handle Select Menus
     if (interaction.isStringSelectMenu()) {
       switch (customId) {
-        case "start_select": {
-          const chosenElement = interaction.values[0];
-          
-          if (chosenElement === "Divine" && userId !== OWNER_ID) {
-            return interaction.update({
-              content: "Divine element is owner-only. Please choose another.",
-              components: interaction.message.components, // Keep component to allow re-selection
-              embeds: [],
-            });
-          }
-
-          players[userId] = createPlayer(userId, chosenElement);
-          saveData();
-          return interaction.update({
-            content: `🎉 You have chosen **${chosenElement}**! Use **/profile** to view your stats.`,
-            components: [],
+case "start_select": {
+    const chosenElement = interaction.values[0];
+    
+    // Check for owner-only element (Divine)
+    if (chosenElement === "Divine" && userId !== OWNER_ID) {
+        return interaction.update({
+            content: "Divine element is owner-only. Please choose another.",
+            components: interaction.message.components, // Keep component to allow re-selection
             embeds: [],
-          });
-        }
-        // Add other select menu logic here
-        // case "pvp_select": ... 
-      }
+        });
     }
+
+    // Process successful selection
+    players[userId] = createPlayer(userId, chosenElement);
+    saveData();
+    
+    // 1. Edit the original message to clear the select menu/buttons.
+    await interaction.message.edit({ 
+        content: `🎉 You have chosen **${chosenElement}**! Use **/profile** to view your stats.`,
+        components: [],
+        embeds: [],
+    });
+    
+    // 2. Send a *new*, ephemeral reply to confirm, which properly closes the interaction event.
+    return interaction.reply({
+        content: "Your adventure has begun!",
+        ephemeral: true,
+    });
+}
+          
     
     // Handle Buttons
     else if (interaction.isButton()) {
