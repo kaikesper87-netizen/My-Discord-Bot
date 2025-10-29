@@ -795,16 +795,28 @@ const commands = [
 // === AUTO-LOAD COMMANDS FROM ./commands FOLDER ===
 const commandsDir = path.join(__dirname, "commands");
 
-if (fs.existsSync(commandsDir)) {
-  const commandFiles = fs.readdirSync(commandsDir).filter(f => f.endsWith(".js"));
-  for (const file of commandFiles) {
-    const { data } = await import(`./commands/${file}`);
-    if (data) commands.push(data.toJSON());
-    console.log(`✅ Loaded command: ${data.name}`);
+async function loadCommands() {
+  if (fs.existsSync(commandsDir)) {
+    const commandFiles = fs.readdirSync(commandsDir).filter(f => f.endsWith(".js"));
+    for (const file of commandFiles) {
+      const { data } = await import(`./commands/${file}`);
+      if (data) commands.push(data.toJSON());
+      console.log(`✅ Loaded command: ${data.name}`);
+    }
   }
+
+  const rest = new REST({ version: "10" }).setToken(TOKEN);
+  console.log("✅ Registered slash commands");
 }
 
-const rest = new REST({ version: "10" }).setToken(TOKEN);
+// Run it safely
+loadCommands()
+  .then(() => {
+    console.log("✅ Bot online!");
+  })
+  .catch(err => {
+    console.error("❌ Failed to load commands:", err);
+  });
 
 (async () => {
   try {
