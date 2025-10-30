@@ -1,5 +1,6 @@
+// src/commands/profile.js
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { database } from '../database.js';
+import { getUser } from '../utils/database.js'; // updated path
 
 export const data = new SlashCommandBuilder()
     .setName('profile')
@@ -7,7 +8,7 @@ export const data = new SlashCommandBuilder()
 
 export const execute = async (interaction) => {
     const userId = interaction.user.id;
-    const player = database.players[userId];
+    const player = getUser(userId); // use the helper
 
     if (!player) {
         return interaction.reply({ content: 'You have not started yet! Use /start.', ephemeral: true });
