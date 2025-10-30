@@ -1,5 +1,6 @@
+// src/commands/pvp.js
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { database } from '../database.js';
+import { getUser } from '../utils/database.js';
 import { SPELL_DATA } from '../constants.js';
 
 export const data = new SlashCommandBuilder()
@@ -16,13 +17,14 @@ export const execute = async (interaction) => {
     const target = interaction.options.getUser('target');
     const targetId = target.id;
 
-    const player = database.players[userId];
-    const enemy = database.players[targetId];
+    const player = getUser(userId);
+    const enemy = getUser(targetId);
 
     if (!player) return interaction.reply({ content: 'Start your journey first using /start.', ephemeral: true });
     if (!enemy) return interaction.reply({ content: 'Target has not started their journey.', ephemeral: true });
 
-    const attackSpell = Object.values(SPELL_DATA).find(s => s.element === player.element)?.type === 'attack' ? Object.values(SPELL_DATA).find(s => s.element === player.element) : null;
+    // Find player's attack spell based on their element
+    const attackSpell = Object.values(SPELL_DATA).find(s => s.element === player.element && s.type === 'attack') || null;
 
     const embed = new EmbedBuilder()
         .setTitle('⚔️ PvP Duel')
