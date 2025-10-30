@@ -1,3 +1,4 @@
+// src/commands/profile.js
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getPlayer } from '../database.js';
 
@@ -10,7 +11,7 @@ export async function execute(interaction) {
     const player = getPlayer(userId);
 
     if (!player) {
-        return interaction.reply({ content: 'You have not started your journey yet. Use /start!', ephemeral: true });
+        return interaction.reply({ content: '❌ You have not started your journey yet. Use /start!', ephemeral: true });
     }
 
     const embed = new EmbedBuilder()
@@ -24,7 +25,7 @@ export async function execute(interaction) {
             { name: 'Attack', value: `${player.attack || 0}`, inline: true },
             { name: 'Defense', value: `${player.defense || 0}`, inline: true },
             { name: 'Gold', value: `${player.Gold || 0}`, inline: true },
-            { name: 'Spells', value: player.spells?.map(s => `${s.emoji} ${s.name}`)?.join('\n') || 'None' }
+            { name: 'Spells', value: player.spells?.length ? player.spells.map(s => `${s.emoji} ${s.name}`).join('\n') : 'None' }
         )
         .setFooter({ text: 'MageBit RPG' });
 
