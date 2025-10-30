@@ -1,6 +1,6 @@
 // src/commands/profile.js
 import { EmbedBuilder, SlashCommandBuilder } from 'discord.js';
-import { players } from '../database.js';
+import { getPlayer } from '../utils/database.js';
 
 export const data = new SlashCommandBuilder()
     .setName('profile')
@@ -8,7 +8,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
     const userId = interaction.user.id;
-    const player = players[userId];
+    const player = getPlayer(userId);
 
     if (!player) {
         return interaction.reply({ content: 'You have not started your journey yet. Use /start!', ephemeral: true });
@@ -20,12 +20,15 @@ export async function execute(interaction) {
         .addFields(
             { name: 'Element', value: player.element || 'None', inline: true },
             { name: 'Rank', value: player.Rank || 'Novice Mage', inline: true },
-            { name: 'HP', value: `${player.HP}/${player.maxHP}`, inline: true },
-            { name: 'Mana', value: `${player.Mana}/${player.maxMana}`, inline: true },
-            { name: 'Attack', value: `${player.attack}`, inline: true },
-            { name: 'Defense', value: `${player.defense}`, inline: true },
-            { name: 'Gold', value: `${player.Gold}`, inline: true },
-            { name: 'Spells', value: player.spells?.map(s => `${s.emoji} ${s.name}`).join('\n') || 'None' }
+            { name: 'HP', value: `${player.HP ?? 0}/${player.maxHP ?? 0}`, inline: true },
+            { name: 'Mana', value: `${player.Mana ?? 0}/${player.maxMana ?? 0}`, inline: true },
+            { name: 'Attack', value: `${player.attack ?? 0}`, inline: true },
+            { name: 'Defense', value: `${player.defense ?? 0}`, inline: true },
+            { name: 'Gold', value: `${player.Gold ?? 0}`, inline: true },
+            { name: 'Spells', value: player.spells && player.spells.length > 0 
+                ? player.spells.map(s => `${s.emoji} ${s.name} (${s.element})`).join('\n')
+                : 'None'
+            }
         )
         .setFooter({ text: 'MageBit RPG' });
 
