@@ -1,18 +1,18 @@
 {
   "name": "magebit-bot",
   "version": "1.0.0",
-  "description": "Discord RPG bot",
+  "description": "MageBit Discord RPG Bot",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18"
   },
   "dependencies": {
     "discord.js": "^14.17.0",
-    "express": "^4.18.2",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2"
   }
 }
