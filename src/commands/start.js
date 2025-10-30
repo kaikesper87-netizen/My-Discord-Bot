@@ -1,7 +1,7 @@
 // src/commands/start.js
 import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { getUser, createUser } from '../utils/database.js';
-import { ELEMENTS } from '../constants.js';
+import { ELEMENTS } from '../utils/constants.js';
 
 export const data = new SlashCommandBuilder()
     .setName('start')
