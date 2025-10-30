@@ -1,45 +1,62 @@
 // src/handlers/interactionHandler.js
-import { Collection } from 'discord.js';
+import { client } from '../index.js';
 import fs from 'fs';
 import path from 'path';
 
-const commands = new Collection();
-
 // Load all commands dynamically
-const commandsPath = path.join('./src/commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+const commands = new Map();
+const commandsDir = path.join(process.cwd(), 'src', 'commands');
+fs.readdirSync(commandsDir)
+  .filter(file => file.endsWith('.js'))
+  .forEach(async file => {
+    const { data, execute } = await import(`../commands/${file}`);
+    if (data && execute) commands.set(data.name, execute);
+  });
 
-for (const file of commandFiles) {
-  const { data, execute } = await import(`../commands/${file}`);
-  if (!data || !execute) {
-    console.warn(`⚠️ Command file ${file} is missing data or execute export.`);
-    continue;
-  }
-  commands.set(data.name, { data, execute });
-  console.log(`✅ Loaded command: ${data.name}`);
-}
-
-// Exported function to handle all interactions
-export const handleInteraction = async (interaction) => {
+client.on('interactionCreate', async (interaction) => {
   try {
-    if (!interaction.isChatInputCommand()) return;
-
-    const command = commands.get(interaction.commandName);
-    if (!command) {
-      console.warn(`⚠️ No command matching ${interaction.commandName} found.`);
-      return;
+    // Slash Command
+    if (interaction.isChatInputCommand()) {
+      const command = commands.get(interaction.commandName);
+      if (!command) return;
+      await command(interaction);
     }
 
-    await command.execute(interaction);
+    // Button Interaction
+    else if (interaction.isButton()) {
+      // Example: element selection or shop buy
+      const [action, key] = interaction.customId.split('_');
+      switch (action) {
+        case 'element':
+          const { createUser } = await import('../utils/database.js');
+          createUser(interaction.user.id, interaction.user.username, key);
+          await interaction.update({ content: `You chose **${key}**! Your adventure begins.`, components: [], embeds: [] });
+          break;
+        case 'buy':
+          const { getUser, updateUser } = await import('../utils/database.js');
+          const { ITEM_DATABASE } = await import('../utils/constants.js');
+          const player = getUser(interaction.user.id);
+          const item = ITEM_DATABASE[key];
+
+          if (player.Gold < item.price) {
+            return interaction.reply({ content: `Not enough gold for ${item.name}.`, flags: 64 }); // ephemeral alternative
+          }
+
+          player.Gold -= item.price;
+          player.items.push(item.name);
+          updateUser(player);
+          await interaction.update({ content: `You purchased **${item.name}**!`, components: [], embeds: [] });
+          break;
+        // Extend for PvP or spell buttons here
+      }
+    }
+
   } catch (error) {
     console.error('❌ Error handling interaction:', error);
-
-    // Check if interaction can still be replied to
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content: 'Something went wrong while executing this command.',
-        ephemeral: true,
-      });
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content: 'Something went wrong.', flags: 64 });
+    } else {
+      await interaction.reply({ content: 'Something went wrong.', flags: 64 });
     }
   }
-};
+});
