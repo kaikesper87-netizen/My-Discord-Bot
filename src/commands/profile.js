@@ -1,6 +1,5 @@
-// src/commands/profile.js
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { getUser } from '../utils/database.js'; // updated path
+import { getUser } from '../utils/database.js';
 
 export const data = new SlashCommandBuilder()
     .setName('profile')
@@ -8,10 +7,10 @@ export const data = new SlashCommandBuilder()
 
 export const execute = async (interaction) => {
     const userId = interaction.user.id;
-    const player = getUser(userId); // use the helper
+    const player = getUser(userId);
 
     if (!player) {
-        return interaction.reply({ content: 'You have not started yet! Use /start.', ephemeral: true });
+        return interaction.reply({ content: 'You have not started yet! Use /start.', flags: 64 }); // ephemeral
     }
 
     const embed = new EmbedBuilder()
@@ -27,5 +26,5 @@ export const execute = async (interaction) => {
         )
         .setColor('Random');
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], flags: 64 });
 };
