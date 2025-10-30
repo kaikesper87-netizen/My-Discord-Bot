@@ -1,5 +1,5 @@
 // src/commands/profile.js
-import { EmbedBuilder, SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getPlayer } from '../utils/database.js';
 
 export const data = new SlashCommandBuilder()
@@ -25,9 +25,12 @@ export async function execute(interaction) {
             { name: 'Attack', value: `${player.attack ?? 0}`, inline: true },
             { name: 'Defense', value: `${player.defense ?? 0}`, inline: true },
             { name: 'Gold', value: `${player.Gold ?? 0}`, inline: true },
-            { name: 'Spells', value: player.spells && player.spells.length > 0 
-                ? player.spells.map(s => `${s.emoji} ${s.name} (${s.element})`).join('\n')
-                : 'None'
+            { 
+                name: 'Spells', 
+                value: player.spells?.length 
+                    ? player.spells.map(s => `${s.emoji || ''} ${s.name || 'Unknown Spell'}`).join('\n') 
+                    : 'None',
+                inline: false
             }
         )
         .setFooter({ text: 'MageBit RPG' });
