@@ -1,124 +1,134 @@
 // src/commands/pvp.js
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { getUser, updateUser } from '../utils/database.js';
 import { SPELL_DATA, ELEMENTS } from '../utils/constants.js';
 
+// Track active battles
+const activeBattles = new Map();
+
 export const data = new SlashCommandBuilder()
   .setName('pvp')
-  .setDescription('Challenge another player to a PvP duel!')
-  .addUserOption(option =>
-    option.setName('target')
-      .setDescription('The player you want to duel')
-      .setRequired(true)
-  );
+  .setDescription('Challenge another player to a duel!');
 
 export const execute = async (interaction) => {
-  const attackerId = interaction.user.id;
+  const challengerId = interaction.user.id;
+  const challenger = getUser(challengerId);
+  if (!challenger) return interaction.reply({ content: 'Start your journey first with /start!', ephemeral: true });
+
   const targetUser = interaction.options.getUser('target');
-  const defenderId = targetUser.id;
+  if (!targetUser) return interaction.reply({ content: 'You must mention a player to challenge.', ephemeral: true });
+  if (targetUser.id === challengerId) return interaction.reply({ content: 'You cannot fight yourself.', ephemeral: true });
 
-  if (attackerId === defenderId) return interaction.reply({ content: "You can't duel yourself!", ephemeral: true });
+  const opponent = getUser(targetUser.id);
+  if (!opponent) return interaction.reply({ content: 'Your target has not started yet!', ephemeral: true });
 
-  const attacker = getUser(attackerId);
-  const defender = getUser(defenderId);
+  // Check if already in battle
+  if (activeBattles.has(challengerId) || activeBattles.has(opponent.id)) {
+    return interaction.reply({ content: 'One of you is already in a battle!', ephemeral: true });
+  }
 
-  if (!attacker || !defender) return interaction.reply({ content: 'Both players must have a profile to duel.', ephemeral: true });
-
-  // Clone HP/Mana so we don't directly modify original until battle ends
-  let atkHP = attacker.HP, atkMana = attacker.Mana;
-  let defHP = defender.HP, defMana = defender.Mana;
-
-  const battleLog = [];
-
-  const elementMultiplier = (attackerElem, defenderElem) => {
-    // Simple elemental system: Fire > Wind > Earth > Water > Fire
-    if ((attackerElem === 'Fire' && defenderElem === 'Wind') ||
-        (attackerElem === 'Wind' && defenderElem === 'Earth') ||
-        (attackerElem === 'Earth' && defenderElem === 'Water') ||
-        (attackerElem === 'Water' && defenderElem === 'Fire')) {
-      return 1.5; // strong
-    } else if ((defenderElem === 'Fire' && attackerElem === 'Wind') ||
-               (defenderElem === 'Wind' && attackerElem === 'Earth') ||
-               (defenderElem === 'Earth' && attackerElem === 'Water') ||
-               (defenderElem === 'Water' && attackerElem === 'Fire')) {
-      return 0.75; // weak
-    }
-    return 1; // neutral
+  // Create battle state
+  const battle = {
+    players: [challenger, opponent],
+    turn: 0,
+    message: null,
+    finished: false,
   };
+  activeBattles.set(challengerId, battle);
+  activeBattles.set(opponent.id, battle);
 
-  const calculateDamage = (attacker, defender, useSpell = null) => {
-    let baseAttack = attacker.attack;
-    let manaCost = 0;
-    let spellName = null;
-
-    if (useSpell) {
-      const spell = SPELL_DATA[useSpell];
-      if (!spell || attacker.Mana < spell.manaCost) return { damage: 0, spellName: null, manaCost: 0 };
-      baseAttack *= spell.basePower;
-      manaCost = spell.manaCost;
-      spellName = spell.name;
-    }
-
-    const mult = elementMultiplier(attacker.element, defender.element);
-    const variance = 0.85 + Math.random() * 0.3; // 85%–115%
-    const damage = Math.max(0, Math.round((baseAttack - defender.defense) * mult * variance));
-    return { damage, spellName, manaCost };
-  };
-
-  // Turn-based loop
-  let turn = 0; // 0 = attacker, 1 = defender
-  while (atkHP > 0 && defHP > 0 && battleLog.length < 20) { // max 20 turns
-    if (turn === 0) {
-      // Attacker turn
-      const { damage, spellName, manaCost } = calculateDamage(attacker, defender, null); // For now normal attack
-      defHP -= damage;
-      atkMana -= manaCost;
-      battleLog.push(`${attacker.username} attacks ${defender.username}${spellName ? ` with ${spellName}` : ''} for **${damage}** damage!`);
-      turn = 1;
-    } else {
-      // Defender turn
-      const { damage, spellName, manaCost } = calculateDamage(defender, attacker, null);
-      atkHP -= damage;
-      defMana -= manaCost;
-      battleLog.push(`${defender.username} attacks ${attacker.username}${spellName ? ` with ${spellName}` : ''} for **${damage}** damage!`);
-      turn = 0;
-    }
-  }
-
-  // Determine winner
-  let winner, loser;
-  if (atkHP <= 0 && defHP <= 0) {
-    winner = null;
-    battleLog.push("It's a draw!");
-  } else if (atkHP > 0) {
-    winner = attacker;
-    loser = defender;
-  } else {
-    winner = defender;
-    loser = attacker;
-  }
-
-  // Reward winner
-  if (winner) {
-    const goldReward = Math.floor(Math.random() * 50) + 50;
-    winner.Gold += goldReward;
-    updateUser(winner.id, winner);
-    battleLog.push(`${winner.username} wins and earns **${goldReward} Gold**!`);
-  }
-
-  // Update HP/Mana
-  attacker.HP = atkHP > 0 ? atkHP : 1;
-  attacker.Mana = atkMana > 0 ? atkMana : 0;
-  defender.HP = defHP > 0 ? defHP : 1;
-  defender.Mana = defMana > 0 ? defMana : 0;
-  updateUser(attacker.id, attacker);
-  updateUser(defender.id, defender);
-
-  // Send embed
   const embed = new EmbedBuilder()
-    .setTitle('PvP Battle')
-    .setDescription(battleLog.join('\n'))
+    .setTitle(`⚔ PvP Battle!`)
+    .setDescription(`${challenger.username} challenged ${opponent.username}!\nWaiting for acceptance...`)
     .setColor('Random');
 
-  await interaction.reply({ embeds: [embed] });
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('accept').setLabel('Accept').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('decline').setLabel('Decline').setStyle(ButtonStyle.Danger)
+  );
+
+  const msg = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
+  battle.message = msg;
+
+  // Collector for buttons
+  const collector = msg.createMessageComponentCollector({ time: 30000 });
+
+  collector.on('collect', async (i) => {
+    if (i.user.id !== opponent.id) return i.reply({ content: 'Only the challenged player can respond!', ephemeral: true });
+
+    if (i.customId === 'decline') {
+      await i.update({ content: `${opponent.username} declined the challenge.`, embeds: [], components: [] });
+      activeBattles.delete(challengerId);
+      activeBattles.delete(opponent.id);
+      return collector.stop();
+    }
+
+    if (i.customId === 'accept') {
+      // Start battle
+      await i.update({ content: `The duel begins!`, embeds: [], components: [] });
+      runBattle(battle);
+      collector.stop();
+    }
+  });
 };
+
+// Battle loop
+async function runBattle(battle) {
+  while (!battle.finished) {
+    const player = battle.players[battle.turn % 2];
+    const opponent = battle.players[(battle.turn + 1) % 2];
+
+    const embed = new EmbedBuilder()
+      .setTitle(`⚔ PvP Battle`)
+      .setDescription(`${player.username}'s turn! Choose an action.`)
+      .addFields(
+        { name: player.username, value: `HP: ${player.HP}/${player.maxHP}\nMana: ${player.Mana}/${player.maxMana}`, inline: true },
+        { name: opponent.username, value: `HP: ${opponent.HP}/${opponent.maxHP}\nMana: ${opponent.Mana}/${opponent.maxMana}`, inline: true }
+      )
+      .setColor('Random');
+
+    const row = new ActionRowBuilder().addComponents(
+      ...Object.keys(SPELL_DATA).slice(0, 5).map((spell) =>
+        new ButtonBuilder().setCustomId(`spell_${spell}`).setLabel(`${SPELL_DATA[spell].emoji} ${spell}`).setStyle(ButtonStyle.Primary)
+      )
+    );
+
+    const msg = await battle.message.edit({ embeds: [embed], components: [row] });
+
+    const filter = (i) => i.user.id === player.id;
+    const collector = msg.createMessageComponentCollector({ filter, max: 1, time: 30000 });
+
+    const choice = await new Promise((resolve) => {
+      collector.on('collect', async (i) => {
+        await i.deferUpdate();
+        resolve(i.customId);
+      });
+      collector.on('end', (collected) => {
+        if (collected.size === 0) resolve(null);
+      });
+    });
+
+    if (!choice) {
+      battle.finished = true;
+      await battle.message.edit({ content: `${player.username} did not respond in time. Battle ended.`, components: [], embeds: [] });
+      activeBattles.delete(player.id);
+      activeBattles.delete(opponent.id);
+      break;
+    }
+
+    const spellName = choice.replace('spell_', '');
+    const spell = SPELL_DATA[spellName];
+    const damage = Math.floor(player.attack * spell.basePower);
+
+    opponent.HP -= damage;
+    if (opponent.HP <= 0) {
+      battle.finished = true;
+      await battle.message.edit({ content: `${player.username} wins the duel!`, components: [], embeds: [] });
+      activeBattles.delete(player.id);
+      activeBattles.delete(opponent.id);
+      break;
+    }
+
+    battle.turn++;
+  }
+        }
