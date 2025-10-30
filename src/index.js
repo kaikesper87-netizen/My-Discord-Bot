@@ -1,48 +1,31 @@
 // src/index.js
 import 'dotenv/config';
-import { Client, GatewayIntentBits, Collection } from 'discord.js';
-import fs from 'fs';
-import path from 'path';
+import { Client, GatewayIntentBits } from 'discord.js';
 import { handleInteraction } from './handlers/interactionHandler.js';
+import http from 'http';
 
-// Create client
+// Create bot client
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 });
 
-// Load slash commands dynamically
-client.commands = new Collection();
-const commandsPath = path.join('./src/commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
-
-for (const file of commandFiles) {
-  const { data, execute } = await import(`./commands/${file}`);
-  client.commands.set(data.name, { data, execute });
-  console.log(`✅ Loaded command: ${data.name}`);
-}
-
-// Event: Bot ready
-client.once('ready', () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-});
-
-// Event: Interaction created
+// Interaction listener
 client.on('interactionCreate', async (interaction) => {
   await handleInteraction(interaction);
 });
 
-// Start bot
-client.login(process.env.TOKEN)
-  .then(() => console.log('✅ Bot login successful'))
-  .catch(err => console.error('❌ Bot login failed:', err));
+// Log when bot is ready
+client.once('ready', () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
+});
 
-// Optional: Basic HTTP server for Render uptime
-import express from 'express';
-const app = express();
-app.get('/', (req, res) => res.send('MageBit is running!'));
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`✅ HTTP server running on port ${PORT}`));
+// Minimal HTTP server to keep Render awake
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('MageBit is alive!\n');
+}).listen(process.env.PORT || 10000, () => {
+  console.log(`✅ HTTP server running on port ${process.env.PORT || 10000}`);
+});
+
+// Login
+client.login(process.env.TOKEN);
