@@ -1,13 +1,13 @@
 // src/commands/start.js
-import { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
-import { ELEMENTS, ELEMENT_PASSIVES, SPELLS } from '../utils/constants.js';
-import { getPlayer, setPlayer } from '../utils/database.js';
+import { SlashCommandBuilder } from 'discord.js';
+import { ELEMENTS, ELEMENT_PASSIVES, SPELL_DATA } from '../utils/constants.js';
+import { getPlayer, setPlayer } from '../database.js';
 
 export const data = new SlashCommandBuilder()
     .setName('start')
     .setDescription('Start your MageBit adventure!');
 
-export async function execute(interaction) {
+export async function execute(interaction, client) {
     const userId = interaction.user.id;
     let player = getPlayer(userId);
 
@@ -15,15 +15,14 @@ export async function execute(interaction) {
         return interaction.reply({ content: '❌ You have already started your adventure!', ephemeral: true });
     }
 
-    // Initial player object
     player = {
         username: interaction.user.username,
         element: null,
         spells: [],
         passive: {},
         HP: 100,
-        maxHP: 100,
         Mana: 100,
+        maxHP: 100,
         maxMana: 100,
         attack: 10,
         defense: 5,
@@ -33,42 +32,38 @@ export async function execute(interaction) {
 
     setPlayer(userId, player);
 
-    // Element selection menu
     const options = ELEMENTS.map(e => ({ label: e, value: e }));
-    const row = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-            .setCustomId('start_select')
-            .setPlaceholder('Select your element')
-            .addOptions(options)
-    );
 
-    await interaction.reply({ content: 'Choose your magical element to begin your journey:', components: [row], ephemeral: true });
+    const row = new client.discord.ActionRowBuilder()
+        .addComponents(
+            new client.discord.StringSelectMenuBuilder()
+                .setCustomId('start_select')
+                .setPlaceholder('Select your element')
+                .addOptions(options)
+        );
+
+    await interaction.reply({ content: 'Choose your magical element to begin your journey:', components: [row] });
 }
 
-// Handle element selection
-export async function handleComponent(interaction) {
+export async function handleComponent(interaction, client) {
     const userId = interaction.user.id;
     const player = getPlayer(userId);
 
-    if (!player) {
-        return interaction.reply({ content: '❌ Please start with /start first.', ephemeral: true });
-    }
+    if (!player) return interaction.reply({ content: '❌ Please start with /start first.', ephemeral: true });
 
     const element = interaction.values[0];
     player.element = element;
 
-    // Assign first spell for the chosen element
-    const firstSpell = Object.values(SPELLS).find(s => s.element === element);
+    const firstSpell = Object.values(SPELL_DATA).find(s => s.element === element);
     if (firstSpell) player.spells.push(firstSpell);
 
-    // Assign passive
     player.passive = ELEMENT_PASSIVES[element] || {};
 
     setPlayer(userId, player);
 
     await interaction.update({
         content: `✅ Your element is **${element}**!\n` +
-                 `You’ve learned your first spell: **${firstSpell.emoji} ${firstSpell.name}**\n` +
+                 `You’ve learned your first spell **${firstSpell.emoji} ${firstSpell.name}**!\n` +
                  `Your passive bonus: ${JSON.stringify(player.passive)}`,
         components: [],
         embeds: []
