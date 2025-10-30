@@ -1,83 +1,64 @@
 // src/commands/start.js
+import { players } from '../database.js'; // your player storage
+import { ELEMENTS, ELEMENT_PASSIVES } from '../utils/constants.js';
+import { EmbedBuilder } from 'discord.js';
 
-import { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder, EmbedBuilder } from 'discord.js';
-import { ELEMENTS, ELEMENT_PASSIVES } from '../utils/constants.js'; // We'll assume you have passives here
+export default {
+    data: {
+        name: 'start',
+        description: 'Create your player profile',
+    },
 
-export const data = new SlashCommandBuilder()
-    .setName('start')
-    .setDescription('Start your adventure and choose your element.');
+    async execute(interaction) {
+        try {
+            // Check if player already exists
+            if (players[interaction.user.id]) {
+                return await interaction.reply({
+                    content: "❌ You already have a profile! Use `/profile` to view it.",
+                    ephemeral: true
+                });
+            }
 
-// --- Helper: create element select menu ---
-function createElementMenu() {
-    const options = ELEMENTS.map(el => ({
-        label: el,
-        value: el
-    }));
+            // Randomly assign an element
+            const element = ELEMENTS[Math.floor(Math.random() * ELEMENTS.length)];
 
-    const menu = new StringSelectMenuBuilder()
-        .setCustomId('choose_element')
-        .setPlaceholder('Select your element')
-        .addOptions(options);
+            // Create the new player
+            players[interaction.user.id] = {
+                username: interaction.user.username,
+                element,
+                HP: 100,
+                maxHP: 100,
+                Mana: 100,
+                maxMana: 100,
+                attack: 0,
+                defense: 0,
+                Rank: 'Novice Mage',
+                Gold: 100,
+                passive: ELEMENT_PASSIVES[element]
+            };
 
-    return new ActionRowBuilder().addComponents(menu);
-}
+            // Profile embed
+            const startEmbed = new EmbedBuilder()
+                .setTitle('🪄 Profile Created!')
+                .setDescription(`Welcome ${interaction.user.username}!\nYou have been assigned the **${element}** element.`)
+                .addFields(
+                    { name: 'HP', value: '100/100', inline: true },
+                    { name: 'Mana', value: '100/100', inline: true },
+                    { name: 'Gold', value: '100', inline: true },
+                    { name: 'Passive', value: ELEMENT_PASSIVES[element], inline: false }
+                )
+                .setColor('Random');
 
-// --- Execute command ---
-export async function execute(interaction, client, players, saveData) {
-    const userId = interaction.user.id;
+            await interaction.reply({ embeds: [startEmbed], ephemeral: true });
 
-    if (players[userId]) {
-        return interaction.reply({ content: "You have already started your adventure!", ephemeral: true });
+        } catch (err) {
+            console.error(err);
+
+            if (interaction.replied || interaction.deferred) {
+                await interaction.editReply({ content: '❌ An error occurred while creating your profile.' });
+            } else {
+                await interaction.reply({ content: '❌ An error occurred while creating your profile.', ephemeral: true });
+            }
+        }
     }
-
-    const embed = new EmbedBuilder()
-        .setTitle('🌟 Choose Your Element')
-        .setDescription('Select an element from the menu below to begin your journey!')
-        .setColor(0x00FF99);
-
-    await interaction.reply({ embeds: [embed], components: [createElementMenu()], ephemeral: true });
-}
-
-// --- Handle element selection ---
-export async function handleComponent(interaction, client, players, saveData) {
-    if (!interaction.isStringSelectMenu()) return;
-    if (interaction.customId !== 'choose_element') return;
-
-    const userId = interaction.user.id;
-    const selectedElement = interaction.values[0];
-
-    if (players[userId]) {
-        return interaction.update({ content: "You have already started your adventure!", components: [], embeds: [], ephemeral: true });
-    }
-
-    // Initialize player stats
-    players[userId] = {
-        username: interaction.user.username,
-        element: selectedElement,
-        passive: ELEMENT_PASSIVES[selectedElement] || "None",
-        Level: 1,
-        experience: 0,
-        money: 100,
-        currentStats: {
-            hp: 100,
-            mana: 100
-        },
-        maxStats: {
-            hp: 100,
-            mana: 100,
-            attack: 10,
-            defense: 5,
-            luck: 1
-        },
-        spells: []
-    };
-
-    saveData();
-
-    const embed = new EmbedBuilder()
-        .setTitle('🎉 Adventure Started!')
-        .setDescription(`You are now a **Level 1 ${selectedElement}** elemental with the passive: **${players[userId].passive}**.`)
-        .setColor(0x00FF99);
-
-    await interaction.update({ embeds: [embed], components: [] });
-}
+};
