@@ -1,73 +1,75 @@
 // src/commands/start.js
-import { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder } from 'discord.js';
-import { ELEMENTS, ELEMENT_PASSIVES, SPELL_DATA } from '../utils/constants.js';
-import { loadDatabase, saveDatabase } from '../utils/database.js';
+import { SlashCommandBuilder } from "discord.js";
+import { ELEMENTS, ELEMENT_PASSIVES, SPELL_DATA } from "../utils/constants.js";
+import { getDatabase, saveDatabase } from "../utils/database.js";
+
+const DIVINE_USER_ID = "YOUR_DISCORD_ID"; // Only you can pick Divine
 
 export const data = new SlashCommandBuilder()
-  .setName('start')
-  .setDescription('Start your adventure and choose your element.');
+  .setName("start")
+  .setDescription("Begin your adventure as a mage.");
 
 export async function execute(interaction) {
-  const db = await loadDatabase();
+  const db = getDatabase();
   const userId = interaction.user.id;
 
+  // Check if user already has a profile
   if (db[userId]) {
-    return interaction.reply({ content: 'You have already started your journey!', ephemeral: true });
+    await interaction.reply({
+      content: "You already have a character!",
+      ephemeral: true
+    });
+    return;
   }
 
-  // Build element select menu
-  const row = new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId('select-element')
-      .setPlaceholder('Choose your element')
-      .addOptions(
-        ELEMENTS.map(el => ({
-          label: el,
-          value: el,
-          description: ELEMENT_PASSIVES[el],
-        }))
-      )
-  );
+  // Build list of selectable elements
+  let availableElements = [...ELEMENTS];
+  if (userId === DIVINE_USER_ID) availableElements.push("Divine");
 
+  // Ask user to choose element
   await interaction.reply({
-    content: 'Choose your element to begin:',
-    components: [row],
+    content: `Choose your element: ${availableElements.join(", ")}`,
     ephemeral: true
   });
 
-  // Collector for element selection
-  const filter = i => i.user.id === userId;
-  const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000, max: 1 });
+  // Collect response
+  const filter = m => m.author.id === userId;
+  const collector = interaction.channel.createMessageCollector({ filter, time: 30000, max: 1 });
 
-  collector.on('collect', async i => {
-    const selected = i.values[0];
+  collector.on("collect", async m => {
+    const chosen = m.content.trim();
+    if (!availableElements.includes(chosen)) {
+      await interaction.followUp({ content: "Invalid element selected.", ephemeral: true });
+      return;
+    }
 
-    // Initialize player in database
+    // Initialize player data
     db[userId] = {
       username: interaction.user.username,
-      element: selected,
+      element: chosen,
       HP: 100,
-      Mana: 100,
       maxHP: 100,
-      maxMana: 100,
-      attack: 10,
+      Mana: 50,
+      maxMana: 50,
+      attack: 5,
       defense: 5,
-      Rank: 'Novice Mage',
-      Gold: 50,
-      spells: SPELL_DATA[selected],
+      gold: 100,
+      spells: Object.keys(SPELL_DATA).filter(sp => SPELL_DATA[sp].element === chosen),
+      passive: ELEMENT_PASSIVES[chosen] || "Brilliance", // Divine default
+      regeneration: 1 // default regen
     };
 
-    await saveDatabase(db);
+    saveDatabase(db);
 
-    await i.update({
-      content: `Welcome, ${interaction.user.username}! You chose **${selected}**. Your journey begins!`,
-      components: []
+    await interaction.followUp({
+      content: `Welcome, **${interaction.user.username}**! You are a **${chosen} Mage**. Your passive is **${db[userId].passive}**.`,
+      ephemeral: true
     });
   });
 
-  collector.on('end', collected => {
+  collector.on("end", collected => {
     if (collected.size === 0) {
-      interaction.editReply({ content: 'You did not select an element in time!', components: [] });
+      interaction.followUp({ content: "You did not choose an element in time.", ephemeral: true });
     }
   });
 }
