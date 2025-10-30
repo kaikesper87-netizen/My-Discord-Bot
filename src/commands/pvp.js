@@ -1,5 +1,6 @@
+// src/commands/pvp.js
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { getPlayer, players, battles, setBattle, deleteBattle } from '../database.js';
+import { getPlayer, getBattle, setBattle, deleteBattle } from '../database.js';
 
 export const data = new SlashCommandBuilder()
     .setName('pvp')
@@ -11,7 +12,10 @@ export async function execute(interaction) {
     const opponent = interaction.options.getUser('opponent');
     const opponentId = opponent.id;
 
-    if (!players[challengerId] || !players[opponentId]) {
+    const challenger = getPlayer(challengerId);
+    const opponentPlayer = getPlayer(opponentId);
+
+    if (!challenger || !opponentPlayer) {
         return interaction.reply({ content: 'Both players must have started their journey!', ephemeral: true });
     }
 
@@ -19,8 +23,8 @@ export async function execute(interaction) {
     setBattle(battleId, { challengerId, opponentId, turn: challengerId });
 
     const embed = new EmbedBuilder()
-        .setTitle('PvP Challenge!')
-        .setDescription(`${interaction.user.username} has challenged ${opponent.username} to a duel!`)
+        .setTitle('⚔️ PvP Challenge!')
+        .setDescription(`${challenger.username} has challenged ${opponentPlayer.username} to a duel!`)
         .setColor('Random');
 
     const row = new ActionRowBuilder().addComponents(
@@ -33,12 +37,13 @@ export async function execute(interaction) {
 
 export async function handleComponent(interaction) {
     const [action, type, battleId] = interaction.customId.split('_');
-    const battle = battles[battleId];
+    const battle = getBattle(battleId);
 
     if (!battle) return interaction.reply({ content: 'Battle not found!', ephemeral: true });
 
     if (type === 'accept') {
         await interaction.update({ content: '⚔️ Battle started!', components: [], embeds: [] });
+        // Combat logic will be implemented later
     } else if (type === 'decline') {
         deleteBattle(battleId);
         await interaction.update({ content: '❌ Battle declined.', components: [], embeds: [] });
