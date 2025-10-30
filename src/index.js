@@ -1,73 +1,123 @@
-// index.js - The Brains of the Bot (Inside /src)
+// src/index.js
 
-"use strict";
-import "dotenv/config";
-import fs from "fs";
-import path from "path";
-import http from "http"; 
-import { fileURLToPath } from "url"; // <--- Important: Imported utility for path.
+import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
+import express from 'express';
+import { Client, GatewayIntentBits, Collection } from 'discord.js';
+import { fileURLToPath } from 'url';
 
-import { 
-  Client, 
-  GatewayIntentBits, 
-  // Removed unused Routes
-} from "discord.js";
-// Removed unused REST import
-
-// --- CONFIG ---
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-export const OWNER_ID = process.env.OWNER_ID; 
-
-// --- DATA PATHS (CORRECTED) ---
+// --- Setup paths ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// Go UP one level from /src, then into /data
-const DATA_DIR = path.join(__dirname, "..", "data"); 
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const PLAYERS_FILE = path.join(DATA_DIR, "players.json");
-const GUILDS_FILE = path.join(DATA_DIR, "guilds.json");
-const QUESTS_FILE = path.join(DATA_DIR, "quests.json");
+// --- Load environment variables ---
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const OWNER_ID = process.env.OWNER_ID;  // <-- Added
+const PORT = process.env.PORT || 10000;
 
-// --- GLOBAL STATE ---
+// --- Initialize Discord client ---
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
+    ]
+});
+
+// Attach ownerId to client for global access
+client.ownerId = OWNER_ID;
+
+// --- Persistent data ---
+const playersFile = path.join(__dirname, 'data', 'players.json');
+const guildsFile = path.join(__dirname, 'data', 'guilds.json');
+
 export let players = {};
 export let guilds = {};
-export let activeQuests = {};
-export let battles = {}; // PvP state tracker
-export let dungeonRuns = {};
 
-// --- CORE UTILITY FUNCTIONS (Importing from a sibling folder) ---
-import { loadData, saveData, registerCommands } from './utils/coreFunctions.js'; 
+// Load data safely
+function loadData() {
+    try {
+        if (fs.existsSync(playersFile)) {
+            players = JSON.parse(fs.readFileSync(playersFile, 'utf-8'));
+        } else {
+            players = {};
+        }
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+        if (fs.existsSync(guildsFile)) {
+            guilds = JSON.parse(fs.readFileSync(guildsFile, 'utf-8'));
+        } else {
+            guilds = {};
+        }
+    } catch (err) {
+        console.error('❌ Failed to load data:', err);
+        players = {};
+        guilds = {};
+    }
+}
 
-// --- DISCORD EVENTS ---
+// Save data
+function saveData() {
+    try {
+        fs.writeFileSync(playersFile, JSON.stringify(players, null, 2));
+        fs.writeFileSync(guildsFile, JSON.stringify(guilds, null, 2));
+    } catch (err) {
+        console.error('❌ Failed to save data:', err);
+    }
+}
 
-client.once("ready", async () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-  
-  loadData(players, guilds, activeQuests, PLAYERS_FILE, GUILDS_FILE, QUESTS_FILE);
-  await registerCommands(client, CLIENT_ID, TOKEN); 
+loadData();
 
-  setInterval(() => saveData(players, guilds, activeQuests, PLAYERS_FILE, GUILDS_FILE, QUESTS_FILE), 60000); 
+// --- Command handling ---
+client.commands = new Collection();
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
 
-  // Uptime Robot server for Render
-  http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is running\n');
-  }).listen(process.env.PORT || 10000, () => {
-    console.log(`✅ HTTP server running on port ${process.env.PORT || 10000} for UptimeRobot`);
-  });
+for (const file of commandFiles) {
+    const { data, execute, handleComponent } = await import(path.join(commandsPath, file));
+    client.commands.set(data.name, { data, execute, handleComponent });
+    console.log(`✅ Loaded command: ${data.name}`);
+}
+
+// --- Interaction handler ---
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isChatInputCommand() && !interaction.isButton() && !interaction.isStringSelectMenu()) return;
+
+    try {
+        if (interaction.isChatInputCommand()) {
+            const command = client.commands.get(interaction.commandName);
+            if (!command) return;
+
+            await command.execute(interaction, client, players, saveData);
+            saveData();
+        } else if (interaction.isButton() || interaction.isStringSelectMenu()) {
+            for (const cmd of client.commands.values()) {
+                if (cmd.handleComponent) {
+                    await cmd.handleComponent(interaction, client, players, saveData);
+                }
+            }
+            saveData();
+        }
+    } catch (error) {
+        console.error('❌ Error handling interaction:', error);
+        if (!interaction.replied) {
+            await interaction.reply({ content: 'An error occurred.', ephemeral: true });
+        }
+    }
 });
 
-// --- CORE INTERACTION HANDLER (Router) ---
-import { handleInteraction } from './handlers/interactionHandler.js'; 
-
-client.on("interactionCreate", async (interaction) => {
-    // Pass global state objects AND the client
-    await handleInteraction(interaction, players, guilds, battles, client); 
+// --- Ready event ---
+client.once('ready', () => {
+    console.log(`✅ Logged in as ${client.user.tag}`);
+    console.log(`✅ Loaded ${Object.keys(players).length} players and ${Object.keys(guilds).length} guilds.`);
 });
 
-// --- LOGIN ---
+// --- Express server for uptime ---
+const app = express();
+app.get('/', (req, res) => res.send('Bot is running'));
+app.listen(PORT, () => console.log(`✅ HTTP server running on port ${PORT}`));
+
+// --- Login ---
 client.login(TOKEN);
