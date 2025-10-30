@@ -1,74 +1,81 @@
 // src/commands/start.js
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
-import { ELEMENTS, SPELLS, RANKS } from '../utils/constants.js';
-import { players, setPlayer } from '../database.js';
+import { SlashCommandBuilder } from 'discord.js';
+import { ELEMENTS, ELEMENT_PASSIVES, SPELL_DATA } from '../utils/constants.js';
+import { getPlayer, setPlayer } from '../utils/database.js'; // adjust if your database util is elsewhere
 
 export const data = new SlashCommandBuilder()
     .setName('start')
-    .setDescription('Begin your journey as a mage!');
+    .setDescription('Start your MageBit adventure!');
 
-export async function execute(interaction) {
+export async function execute(interaction, client) {
     const userId = interaction.user.id;
+    let player = getPlayer(userId);
 
-    if (players[userId]) {
-        return interaction.reply({ content: 'You have already started your journey!', ephemeral: true });
+    if (player) {
+        return interaction.reply({ content: '❌ You have already started your adventure!', ephemeral: true });
     }
 
-    // Create player skeleton
-    const player = {
+    // Initial empty player
+    player = {
         username: interaction.user.username,
         element: null,
-        rank: RANKS[0],
+        spells: [],
+        passive: {},
         HP: 100,
-        maxHP: 100,
         Mana: 100,
+        maxHP: 100,
         maxMana: 100,
         attack: 10,
         defense: 5,
-        gold: 100,
-        spells: [],
+        Gold: 50,
+        Rank: 'Novice Mage'
     };
 
-    // Save temporarily
     setPlayer(userId, player);
 
-    // Element selection embed
-    const embed = new EmbedBuilder()
-        .setTitle('Choose Your Element')
-        .setDescription('Select your mage element from the menu below:')
-        .setColor('Random')
-        .setFooter({ text: 'This will define your powers!' });
+    // Send element selection menu
+    const options = ELEMENTS.map(e => ({
+        label: e,
+        value: e
+    }));
 
-    // Select menu
-    const select = new StringSelectMenuBuilder()
-        .setCustomId('start_select')
-        .setPlaceholder('Pick your element')
-        .addOptions(ELEMENTS.map(e => ({ label: e, value: e, description: `Start as ${e} mage` })));
+    const row = new client.discord.ActionRowBuilder()
+        .addComponents(
+            new client.discord.StringSelectMenuBuilder()
+                .setCustomId('start_select')
+                .setPlaceholder('Select your element')
+                .addOptions(options)
+        );
 
-    const row = new ActionRowBuilder().addComponents(select);
-
-    await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+    await interaction.reply({ content: 'Choose your magical element to begin your journey:', components: [row] });
 }
 
-// Component handler for selection
-export async function handleComponent(interaction) {
+// Handle the element select menu
+export async function handleComponent(interaction, client) {
     const userId = interaction.user.id;
-    const player = players[userId];
+    const player = getPlayer(userId);
 
-    if (!player) return interaction.reply({ content: 'Start your journey first using /start.', ephemeral: true });
+    if (!player) {
+        return interaction.reply({ content: '❌ Please start with /start first.', ephemeral: true });
+    }
 
     const element = interaction.values[0];
     player.element = element;
 
-    // Assign first spell for element
-    const spell = Object.values(SPELLS).find(s => s.element === element);
-    if (spell) player.spells.push(spell);
+    // Assign first spell for this element
+    const firstSpell = Object.values(SPELL_DATA).find(s => s.element === element);
+    if (firstSpell) player.spells.push(firstSpell);
+
+    // Assign passive
+    player.passive = ELEMENT_PASSIVES[element] || {};
 
     setPlayer(userId, player);
 
     await interaction.update({
-        content: `✅ Your element is **${element}**! You’ve learned your first spell **${player.spells[0].emoji}**!`,
+        content: `✅ Your element is **${element}**!\n` +
+                 `You’ve learned your first spell **${firstSpell.emoji} ${firstSpell.name}**!\n` +
+                 `Your passive bonus: ${player.passive}`,
         embeds: [],
         components: []
     });
-      }
+}
