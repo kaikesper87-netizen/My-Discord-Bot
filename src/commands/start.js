@@ -1,89 +1,83 @@
 // src/commands/start.js
 
-import { 
-    SlashCommandBuilder, 
-    StringSelectMenuBuilder, 
-    StringSelectMenuOptionBuilder, 
-    ActionRowBuilder 
-} from "discord.js";
-// Import global state and essential utilities
-import { OWNER_ID, players } from "../index.js"; 
-import { ELEMENTS } from "../utils/constants.js"; 
-import { recalculateStats, elementSpells, passives } from "../utils/coreFunctions.js"; 
+import { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder, EmbedBuilder } from 'discord.js';
+import { ELEMENTS, ELEMENT_PASSIVES } from '../utils/constants.js'; // We'll assume you have passives here
 
-// --- 1. COMMAND DEFINITION ---
 export const data = new SlashCommandBuilder()
-    .setName("start")
-    .setDescription("Start your RPG adventure!");
+    .setName('start')
+    .setDescription('Start your adventure and choose your element.');
 
-// --- 2. SLASH COMMAND EXECUTION (/start) ---
-export async function execute(interaction, client) {
+// --- Helper: create element select menu ---
+function createElementMenu() {
+    const options = ELEMENTS.map(el => ({
+        label: el,
+        value: el
+    }));
+
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId('choose_element')
+        .setPlaceholder('Select your element')
+        .addOptions(options);
+
+    return new ActionRowBuilder().addComponents(menu);
+}
+
+// --- Execute command ---
+export async function execute(interaction, client, players, saveData) {
     const userId = interaction.user.id;
-    
+
     if (players[userId]) {
         return interaction.reply({ content: "You have already started your adventure!", ephemeral: true });
     }
-    
-    // CRITICAL: Defer to prevent the 10062 'Unknown interaction' error!
-    await interaction.deferReply({ ephemeral: true }); 
 
-    const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId("start_select")
-        .setPlaceholder("Choose your starting element...")
-        .addOptions(
-            ...ELEMENTS.map(element => {
-              // Owner-only check for Divine element
-              if (element === "Divine" && userId !== OWNER_ID) return null; 
-              return new StringSelectMenuOptionBuilder()
-                .setLabel(element)
-                .setValue(element);
-            }).filter(Boolean)
-        );
-    
-    const row = new ActionRowBuilder().addComponents(selectMenu);
-    
-    return interaction.editReply({ 
-        content: "Welcome! Choose your starting element:", 
-        components: [row] 
-    });
+    const embed = new EmbedBuilder()
+        .setTitle('🌟 Choose Your Element')
+        .setDescription('Select an element from the menu below to begin your journey!')
+        .setColor(0x00FF99);
+
+    await interaction.reply({ embeds: [embed], components: [createElementMenu()], ephemeral: true });
 }
 
-// --- 3. COMPONENT HANDLER (start_select) ---
-export async function handleComponent(interaction, client) {
-    if (!interaction.isStringSelectMenu()) return; 
+// --- Handle element selection ---
+export async function handleComponent(interaction, client, players, saveData) {
+    if (!interaction.isStringSelectMenu()) return;
+    if (interaction.customId !== 'choose_element') return;
 
     const userId = interaction.user.id;
-    const selectedElement = interaction.values[0]; 
-    
-    if (players[userId]) {
-         return interaction.update({ content: "You've already started!", components: [] });
-    }
-    
-    // 1. Create the new player object with starting values
-    const newPlayer = {
-        Level: 1,
-        element: selectedElement,
-        experience: 0,
-        money: 100, 
-        items: [],
-        spells: elementSpells[selectedElement] || [],
-        passive: passives[selectedElement] || "None",
-        maxStats: {}, // Populated by recalculateStats
-        currentStats: { hp: 0, mana: 0 }, // Populated by recalculateStats
-        cooldowns: {},
-    };
-    
-    // 2. Calculate and set initial stats
-    recalculateStats(newPlayer);
-    newPlayer.currentStats.hp = newPlayer.maxStats.hp;
-    newPlayer.currentStats.mana = newPlayer.maxStats.mana;
-    
-    // 3. Save the player to global state
-    players[userId] = newPlayer;
+    const selectedElement = interaction.values[0];
 
-    // 4. Update the message to confirm creation
-    await interaction.update({ 
-        content: `🎉 Adventure started! You are now a **Level 1 ${selectedElement}** elementalist.`, 
-        components: [] 
-    });
-        }
+    if (players[userId]) {
+        return interaction.update({ content: "You have already started your adventure!", components: [], embeds: [], ephemeral: true });
+    }
+
+    // Initialize player stats
+    players[userId] = {
+        username: interaction.user.username,
+        element: selectedElement,
+        passive: ELEMENT_PASSIVES[selectedElement] || "None",
+        Level: 1,
+        experience: 0,
+        money: 100,
+        currentStats: {
+            hp: 100,
+            mana: 100
+        },
+        maxStats: {
+            hp: 100,
+            mana: 100,
+            attack: 10,
+            defense: 5,
+            luck: 1
+        },
+        spells: []
+    };
+
+    saveData();
+
+    const embed = new EmbedBuilder()
+        .setTitle('🎉 Adventure Started!')
+        .setDescription(`You are now a **Level 1 ${selectedElement}** elemental with the passive: **${players[userId].passive}**.`)
+        .setColor(0x00FF99);
+
+    await interaction.update({ embeds: [embed], components: [] });
+}
