@@ -1,4 +1,4 @@
-// src/utils/database.js
+// src/database.js
 import fs from 'fs';
 import path from 'path';
 
@@ -6,7 +6,7 @@ const DATA_PATH = path.join(process.cwd(), 'src', 'database.json');
 
 let players = {};
 let guilds = {};
-let battles = {}; // Added PvP battles
+let battles = {};
 
 // Load existing data
 if (fs.existsSync(DATA_PATH)) {
@@ -57,7 +57,7 @@ export function deleteGuild(guildId) {
     saveDatabase();
 }
 
-// Battles functions
+// Battle functions
 export function getBattle(battleId) {
     return battles[battleId];
 }
@@ -72,5 +72,5 @@ export function deleteBattle(battleId) {
     saveDatabase();
 }
 
-// Export full in-memory objects
+// Export in-memory objects too
 export { players, guilds, battles };
