@@ -1,20 +1,17 @@
 // src/handlers/interactionHandler.js
 import fs from 'fs';
 import path from 'path';
-import { Collection } from 'discord.js';
 
-const commandsPath = path.join(process.cwd(), 'src', 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
-
-// Load commands dynamically
-export const commands = new Collection();
+// Auto-load commands
+const commandsDir = path.join(process.cwd(), 'src/commands');
+const commandFiles = fs.readdirSync(commandsDir).filter(f => f.endsWith('.js'));
+const commands = new Map();
 
 for (const file of commandFiles) {
     const { data, execute, handleComponent } = await import(`../commands/${file}`);
-    commands.set(data.name, { data, execute, handleComponent });
+    commands.set(data.name, { execute, handleComponent });
 }
 
-// Main interaction handler
 export async function handleInteraction(interaction, players, guilds, battles, client) {
     try {
         if (interaction.isChatInputCommand()) {
@@ -22,17 +19,25 @@ export async function handleInteraction(interaction, players, guilds, battles, c
             if (!cmd) return;
 
             await cmd.execute(interaction, client);
-        } else if (interaction.isStringSelectMenu() || interaction.isButton()) {
-            const cmdName = interaction.customId.split('_')[0]; // e.g., 'start' or 'pvp'
-            const cmd = commands.get(cmdName);
-            if (!cmd || !cmd.handleComponent) return;
-
-            await cmd.handleComponent(interaction, client, battles, players);
         }
-    } catch (error) {
-        console.error('❌ Interaction error:', error);
+        else if (interaction.isStringSelectMenu() || interaction.isButton()) {
+            // Determine which command the component belongs to
+            const [prefix, ...rest] = interaction.customId.split('_');
+            
+            // Example: 'start_select' => 'start'
+            const commandName = prefix;
+            const cmd = commands.get(commandName);
+            if (!cmd) return;
 
-        // Safely reply if interaction hasn't been acknowledged yet
+            // Only call handleComponent if it exists
+            if (cmd.handleComponent) {
+                await cmd.handleComponent(interaction, client, battles, players);
+            }
+        }
+    } catch (err) {
+        console.error('❌ Interaction error:', err);
+
+        // Try safe reply if not already acknowledged
         if (!interaction.replied && !interaction.deferred) {
             try {
                 await interaction.reply({ content: '❌ Something went wrong.', ephemeral: true });
