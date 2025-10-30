@@ -1,6 +1,6 @@
 // src/commands/pvp.js
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { players, battles } from '../database.js';
+import { players, getBattle, setBattle, deleteBattle } from '../database.js';
 
 export const data = new SlashCommandBuilder()
     .setName('pvp')
@@ -12,12 +12,16 @@ export async function execute(interaction) {
     const opponent = interaction.options.getUser('opponent');
     const opponentId = opponent.id;
 
+    if (challengerId === opponentId) {
+        return interaction.reply({ content: '❌ You cannot challenge yourself!', ephemeral: true });
+    }
+
     if (!players[challengerId] || !players[opponentId]) {
         return interaction.reply({ content: 'Both players must have started their journey!', ephemeral: true });
     }
 
     const battleId = `${challengerId}_${opponentId}`;
-    battles[battleId] = { challengerId, opponentId, turn: challengerId };
+    setBattle(battleId, { challengerId, opponentId, turn: challengerId });
 
     const embed = new EmbedBuilder()
         .setTitle('PvP Challenge!')
@@ -32,17 +36,17 @@ export async function execute(interaction) {
     await interaction.reply({ embeds: [embed], components: [row] });
 }
 
-export async function handleComponent(interaction, client, battles, players) {
+export async function handleComponent(interaction) {
     const [action, type, battleId] = interaction.customId.split('_');
-    const battle = battles[battleId];
+    const battle = getBattle(battleId);
 
     if (!battle) return interaction.reply({ content: 'Battle not found!', ephemeral: true });
 
     if (type === 'accept') {
         await interaction.update({ content: '⚔️ Battle started!', components: [], embeds: [] });
-        // Combat logic to be enhanced later
+        // Combat logic to be added later
     } else if (type === 'decline') {
-        delete battles[battleId];
+        deleteBattle(battleId);
         await interaction.update({ content: '❌ Battle declined.', components: [], embeds: [] });
     }
 }
