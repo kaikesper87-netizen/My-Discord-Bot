@@ -1,6 +1,6 @@
 // src/commands/start.js
 import { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
-import { ELEMENTS, ELEMENT_PASSIVES, SPELL_DATA } from '../utils/constants.js';
+import { ELEMENTS, ELEMENT_PASSIVES, SPELLS } from '../utils/constants.js';
 import { getPlayer, setPlayer } from '../utils/database.js';
 
 export const data = new SlashCommandBuilder()
@@ -15,7 +15,7 @@ export async function execute(interaction) {
         return interaction.reply({ content: '❌ You have already started your adventure!', ephemeral: true });
     }
 
-    // Initialize player
+    // Create new player
     player = {
         username: interaction.user.username,
         element: null,
@@ -33,16 +33,21 @@ export async function execute(interaction) {
 
     setPlayer(userId, player);
 
-    // Create element selection menu
+    // Build element selection menu
     const options = ELEMENTS.map(e => ({ label: e, value: e }));
-    const row = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-            .setCustomId('start_select')
-            .setPlaceholder('Select your element')
-            .addOptions(options)
-    );
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId('start_select')
+                .setPlaceholder('Select your element')
+                .addOptions(options)
+        );
 
-    await interaction.reply({ content: 'Choose your magical element to begin your journey:', components: [row] });
+    await interaction.reply({
+        content: 'Choose your magical element to begin your journey:',
+        components: [row],
+        ephemeral: true
+    });
 }
 
 // Handle element selection
@@ -57,11 +62,11 @@ export async function handleComponent(interaction) {
     const element = interaction.values[0];
     player.element = element;
 
-    // Assign first spell
-    const firstSpell = Object.values(SPELL_DATA).find(s => s.element === element);
+    // Assign first spell of the chosen element
+    const firstSpell = Object.values(SPELLS).find(s => s.element === element);
     if (firstSpell) player.spells.push(firstSpell);
 
-    // Assign passive
+    // Assign passive bonus
     player.passive = ELEMENT_PASSIVES[element] || {};
 
     setPlayer(userId, player);
@@ -69,8 +74,8 @@ export async function handleComponent(interaction) {
     await interaction.update({
         content: `✅ Your element is **${element}**!\n` +
                  `You’ve learned your first spell **${firstSpell?.emoji || ''} ${firstSpell?.name || ''}**!\n` +
-                 `Your passive bonus: ${Object.keys(player.passive).length ? JSON.stringify(player.passive) : 'None'}`,
-        embeds: [],
-        components: []
+                 `Your passive bonus: ${JSON.stringify(player.passive)}`,
+        components: [],
+        embeds: []
     });
 }
