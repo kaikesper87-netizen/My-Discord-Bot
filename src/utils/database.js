@@ -2,73 +2,53 @@
 import fs from 'fs';
 import path from 'path';
 
-const dbPath = path.join(process.cwd(), 'src', 'database.json');
+const dbPath = path.join('./src/database.json');
 
-let database = {
-  players: {},
-  guilds: {}
-};
+// Ensure database file exists
+if (!fs.existsSync(dbPath)) {
+  fs.writeFileSync(dbPath, JSON.stringify({}), 'utf8');
+}
 
-// Load database from file
-export const loadDatabase = () => {
-  if (fs.existsSync(dbPath)) {
-    try {
-      const rawData = fs.readFileSync(dbPath, 'utf-8');
-      database = JSON.parse(rawData);
-      console.log(`✅ Loaded database from file.`);
-    } catch (err) {
-      console.error(`❌ Failed to parse database.json:`, err);
-    }
-  } else {
-    saveDatabase(); // create new file if not exists
-  }
-};
-
-// Save current database to file
-export const saveDatabase = () => {
+export const readDatabase = () => {
+  const raw = fs.readFileSync(dbPath, 'utf8');
   try {
-    fs.writeFileSync(dbPath, JSON.stringify(database, null, 2));
-    // console.log(`💾 Database saved.`);
-  } catch (err) {
-    console.error(`❌ Failed to save database:`, err);
+    return JSON.parse(raw);
+  } catch {
+    console.error('❌ Failed to parse database.json, resetting file.');
+    fs.writeFileSync(dbPath, JSON.stringify({}), 'utf8');
+    return {};
   }
 };
 
-// Player functions
-export const getPlayer = (userId) => {
-  return database.players[userId] || null;
+export const writeDatabase = (data) => {
+  fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf8');
 };
 
-export const createPlayer = (userId, playerData) => {
-  database.players[userId] = playerData;
-  saveDatabase();
-  return database.players[userId];
+// Profile helpers
+export const getUser = (userId) => {
+  const db = readDatabase();
+  return db[userId] || null;
 };
 
-export const updatePlayer = (userId, newData) => {
-  if (!database.players[userId]) return null;
-  database.players[userId] = { ...database.players[userId], ...newData };
-  saveDatabase();
-  return database.players[userId];
+export const createUser = (userId, profileData) => {
+  const db = readDatabase();
+  db[userId] = profileData;
+  writeDatabase(db);
+  return db[userId];
 };
 
-// Guild functions
-export const getGuild = (guildId) => {
-  return database.guilds[guildId] || null;
+export const updateUser = (userId, newData) => {
+  const db = readDatabase();
+  if (!db[userId]) return null;
+  db[userId] = { ...db[userId], ...newData };
+  writeDatabase(db);
+  return db[userId];
 };
 
-export const createGuild = (guildId, guildData) => {
-  database.guilds[guildId] = guildData;
-  saveDatabase();
-  return database.guilds[guildId];
+export const deleteUser = (userId) => {
+  const db = readDatabase();
+  if (db[userId]) {
+    delete db[userId];
+    writeDatabase(db);
+  }
 };
-
-export const updateGuild = (guildId, newData) => {
-  if (!database.guilds[guildId]) return null;
-  database.guilds[guildId] = { ...database.guilds[guildId], ...newData };
-  saveDatabase();
-  return database.guilds[guildId];
-};
-
-// Expose the raw database if needed
-export const getDatabase = () => database;
