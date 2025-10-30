@@ -1,80 +1,50 @@
 // src/commands/profile.js
+import { players } from '../database.js'; // wherever you store player data
+import { EmbedBuilder } from 'discord.js';
 
-import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
-import { recalculateStats } from "../utils/coreFunctions.js";
+export default {
+    data: {
+        name: 'profile',
+        description: 'View your player profile',
+    },
 
-// --- 1. COMMAND DEFINITION ---
-export const data = new SlashCommandBuilder()
-  .setName("profile")
-  .setDescription("View your player profile, stats, and gear.")
-  .addUserOption(option =>
-    option
-      .setName("user")
-      .setDescription("The user whose profile you want to view (defaults to yourself)")
-      .setRequired(false)
-  );
+    async execute(interaction) {
+        try {
+            const player = players[interaction.user.id];
 
-// --- 2. SLASH COMMAND EXECUTION (/profile) ---
-export async function execute(interaction, client, players) {
-  // Determine which user's profile to view
-  const targetUser = interaction.options.getUser("user") || interaction.user;
-  const targetId = targetUser.id;
-  const player = players[targetId];
+            // If no player exists
+            if (!player) {
+                // ephemeral message so only the user sees it
+                return await interaction.reply({ 
+                    content: "❌ You don't have a profile yet! Use `/start` first.", 
+                    ephemeral: true 
+                });
+            }
 
-  // Check if the profile exists
-  if (!player) {
-    const msg = targetId === interaction.user.id
-      ? "You haven't started your adventure yet! Use **/start**."
-      : `${targetUser.username} hasn't started their adventure yet.`;
-    return interaction.reply({ content: msg, ephemeral: true });
-  }
+            // Build profile embed
+            const profileEmbed = new EmbedBuilder()
+                .setTitle(`${player.username}'s Profile`)
+                .addFields(
+                    { name: 'Element', value: player.element, inline: true },
+                    { name: 'Rank', value: player.Rank || 'Novice', inline: true },
+                    { name: 'HP', value: `${player.HP}/${player.maxHP}`, inline: true },
+                    { name: 'Mana', value: `${player.Mana}/${player.maxMana}`, inline: true },
+                    { name: 'Gold', value: player.Gold.toString(), inline: true }
+                )
+                .setColor('Random');
 
-  // Recalculate stats before displaying
-  recalculateStats(player);
+            // Send the embed
+            await interaction.reply({ embeds: [profileEmbed], ephemeral: true });
 
-  // --- Create the Profile Embed ---
-  const profileEmbed = new EmbedBuilder()
-    .setColor(0x0099FF)
-    .setTitle(`⚔️ ${targetUser.username}'s Profile ⚔️`)
-    .setDescription(`**The ${player.element} Elemental**`)
-    .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
-    .addFields(
-      // --- General Stats ---
-      {
-        name: '🧬 Core Status',
-        value: `**Level:** ${player.Level}\n**XP:** ${player.experience}\n**Money:** 💰 ${player.money}`,
-        inline: true
-      },
-      // --- Combat Stats ---
-      {
-        name: '🔥 Combat Attributes',
-        value: `**HP:** ${player.currentStats.hp}/${player.maxStats.hp}\n**Mana:** ${player.currentStats.mana}/${player.maxStats.mana}`,
-        inline: true
-      },
-      {
-        name: '\u200B', // Invisible Field for spacing
-        value: '\u200B',
-        inline: false,
-      },
-      {
-        name: '⚔️ Offense & Defense',
-        value: `**Attack:** ${player.maxStats.attack}\n**Defense:** ${player.maxStats.defense}\n**Luck:** ${player.maxStats.luck}`,
-        inline: true
-      },
-      // --- Elemental & Passive ---
-      {
-        name: '✨ Elemental Power',
-        value: `**Element:** ${player.element}\n**Passive:** ${player.passive || "None"}`,
-        inline: true
-      },
-      // --- Inventory/Spells ---
-      {
-        name: '📜 Spells Known',
-        value: player.spells && player.spells.length > 0 ? player.spells.join(', ') : "None",
-        inline: false
-      }
-    )
-    .setFooter({ text: `Last active: ${new Date().toLocaleDateString()}` });
+        } catch (err) {
+            console.error(err);
 
-  return interaction.reply({ embeds: [profileEmbed], ephemeral: false });
+            // If we already replied (or deferred), use editReply
+            if (interaction.replied || interaction.deferred) {
+                await interaction.editReply({ content: '❌ An error occurred while loading your profile.' });
+            } else {
+                await interaction.reply({ content: '❌ An error occurred while loading your profile.', ephemeral: true });
+            }
+        }
+    }
 };
