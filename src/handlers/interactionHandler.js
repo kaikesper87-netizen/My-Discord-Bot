@@ -1,26 +1,25 @@
-// src/handlers/interactionHandler.js
-import { Client, Collection } from 'discord.js';
-import fs from 'fs';
-import path from 'path';
+const fs = require('fs');
+const path = require('path');
+const { Collection } = require('discord.js');
 
 // Load commands
 const commands = new Collection();
-const commandsPath = path.join('./src/commands');
+const commandsPath = path.join(__dirname, '../commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
 for (const file of commandFiles) {
-    const { data, execute } = await import(`../commands/${file}`);
-    commands.set(data.name, { data, execute });
+    const command = require(`../commands/${file}`);
+    commands.set(command.data.name, command);
 }
 
-export const handleInteraction = async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
+const handleInteraction = async (interaction, client) => {
+    if (!interaction.isCommand()) return;
 
     const command = commands.get(interaction.commandName);
     if (!command) return;
 
     try {
-        await command.execute(interaction);
+        await command.execute(interaction, client);
     } catch (error) {
         console.error('❌ Error handling interaction:', error);
         if (!interaction.replied && !interaction.deferred) {
@@ -28,3 +27,5 @@ export const handleInteraction = async (interaction) => {
         }
     }
 };
+
+module.exports = { handleInteraction };
