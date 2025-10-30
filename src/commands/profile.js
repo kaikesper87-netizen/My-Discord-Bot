@@ -1,6 +1,6 @@
 // src/commands/profile.js
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { getPlayer } from '../utils/database.js';
+import { EmbedBuilder, SlashCommandBuilder } from 'discord.js';
+import { getPlayer } from '../utils/database.js'; // use your DB util
 
 export const data = new SlashCommandBuilder()
     .setName('profile')
@@ -20,17 +20,16 @@ export async function execute(interaction) {
         .addFields(
             { name: 'Element', value: player.element || 'None', inline: true },
             { name: 'Rank', value: player.Rank || 'Novice Mage', inline: true },
-            { name: 'HP', value: `${player.HP ?? 0}/${player.maxHP ?? 0}`, inline: true },
-            { name: 'Mana', value: `${player.Mana ?? 0}/${player.maxMana ?? 0}`, inline: true },
-            { name: 'Attack', value: `${player.attack ?? 0}`, inline: true },
-            { name: 'Defense', value: `${player.defense ?? 0}`, inline: true },
-            { name: 'Gold', value: `${player.Gold ?? 0}`, inline: true },
+            { name: 'HP', value: `${player.HP || 0}/${player.maxHP || 100}`, inline: true },
+            { name: 'Mana', value: `${player.Mana || 0}/${player.maxMana || 100}`, inline: true },
+            { name: 'Attack', value: `${player.attack || 0}`, inline: true },
+            { name: 'Defense', value: `${player.defense || 0}`, inline: true },
+            { name: 'Gold', value: `${player.Gold || 0}`, inline: true },
             { 
                 name: 'Spells', 
-                value: player.spells?.length 
-                    ? player.spells.map(s => `${s.emoji || ''} ${s.name || 'Unknown Spell'}`).join('\n') 
-                    : 'None',
-                inline: false
+                value: player.spells && player.spells.length > 0 
+                    ? player.spells.map(s => `${s.emoji} ${s.name} (${s.element})`).join('\n') 
+                    : 'None' 
             }
         )
         .setFooter({ text: 'MageBit RPG' });
