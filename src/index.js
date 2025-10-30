@@ -1,22 +1,15 @@
-// src/index.js
-import 'dotenv/config';
-import { Client, GatewayIntentBits } from 'discord.js';
-import { handleInteraction } from './handlers/interactionHandler.js';
+require('dotenv').config();
+const { Client, Intents } = require('discord.js');
+const { handleInteraction } = require('./handlers/interactionHandler');
 
-const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
-});
+const client = new Client({ intents: [Intents.FLAGS.GUILDS] });
 
 client.once('ready', () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
-// Listen to interactions
 client.on('interactionCreate', async (interaction) => {
-    await handleInteraction(interaction);
+    await handleInteraction(interaction, client);
 });
 
-// Start bot
-client.login(process.env.TOKEN)
-    .then(() => console.log('✅ Bot is running...'))
-    .catch(console.error);
+client.login(process.env.TOKEN);
