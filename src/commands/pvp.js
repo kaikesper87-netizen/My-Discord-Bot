@@ -1,6 +1,6 @@
 // src/commands/pvp.js
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { getPlayer, getBattle, setBattle, deleteBattle } from '../database.js';
+import { getPlayer, setBattle, getBattle, deleteBattle } from '../utils/database.js';
 
 export const data = new SlashCommandBuilder()
     .setName('pvp')
@@ -13,9 +13,9 @@ export async function execute(interaction) {
     const opponentId = opponent.id;
 
     const challenger = getPlayer(challengerId);
-    const opponentPlayer = getPlayer(opponentId);
+    const enemy = getPlayer(opponentId);
 
-    if (!challenger || !opponentPlayer) {
+    if (!challenger || !enemy) {
         return interaction.reply({ content: 'Both players must have started their journey!', ephemeral: true });
     }
 
@@ -35,26 +35,17 @@ export async function execute(interaction) {
     await interaction.reply({ embeds: [embed], components: [row] });
 }
 
-// Handle button interactions
+// Handle PvP button clicks
 export async function handleComponent(interaction) {
     const [action, type, battleId] = interaction.customId.split('_');
     const battle = getBattle(battleId);
 
-    if (!battle) return interaction.reply({ content: '❌ Battle not found!', ephemeral: true });
+    if (!battle) return interaction.reply({ content: 'Battle not found!', ephemeral: true });
 
     if (type === 'accept') {
-        await interaction.update({
-            content: `⚔️ Battle between <@${battle.challengerId}> and <@${battle.opponentId}> has started!`,
-            components: [],
-            embeds: []
-        });
-        // Here you can later add your combat logic
+        await interaction.update({ content: '⚔️ Battle started!', components: [], embeds: [] });
     } else if (type === 'decline') {
         deleteBattle(battleId);
-        await interaction.update({
-            content: '❌ The battle has been declined.',
-            components: [],
-            embeds: []
-        });
+        await interaction.update({ content: '❌ Battle declined.', components: [], embeds: [] });
     }
 }
