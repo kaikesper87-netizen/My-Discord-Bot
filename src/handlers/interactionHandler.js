@@ -1,31 +1,45 @@
-const fs = require('fs');
-const path = require('path');
-const { Collection } = require('discord.js');
+// src/handlers/interactionHandler.js
+import { Collection } from 'discord.js';
+import fs from 'fs';
+import path from 'path';
 
-// Load commands
 const commands = new Collection();
-const commandsPath = path.join(__dirname, '../commands');
+
+// Load all commands dynamically
+const commandsPath = path.join('./src/commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
 for (const file of commandFiles) {
-    const command = require(`../commands/${file}`);
-    commands.set(command.data.name, command);
+  const { data, execute } = await import(`../commands/${file}`);
+  if (!data || !execute) {
+    console.warn(`⚠️ Command file ${file} is missing data or execute export.`);
+    continue;
+  }
+  commands.set(data.name, { data, execute });
+  console.log(`✅ Loaded command: ${data.name}`);
 }
 
-const handleInteraction = async (interaction, client) => {
-    if (!interaction.isCommand()) return;
+// Exported function to handle all interactions
+export const handleInteraction = async (interaction) => {
+  try {
+    if (!interaction.isChatInputCommand()) return;
 
     const command = commands.get(interaction.commandName);
-    if (!command) return;
-
-    try {
-        await command.execute(interaction, client);
-    } catch (error) {
-        console.error('❌ Error handling interaction:', error);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'Something went wrong.', ephemeral: true });
-        }
+    if (!command) {
+      console.warn(`⚠️ No command matching ${interaction.commandName} found.`);
+      return;
     }
-};
 
-module.exports = { handleInteraction };
+    await command.execute(interaction);
+  } catch (error) {
+    console.error('❌ Error handling interaction:', error);
+
+    // Check if interaction can still be replied to
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content: 'Something went wrong while executing this command.',
+        ephemeral: true,
+      });
+    }
+  }
+};
