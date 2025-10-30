@@ -1,5 +1,6 @@
+// src/commands/start.js
 import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
-import { database } from '../database.js';
+import { getUser, createUser } from '../utils/database.js';
 import { ELEMENTS } from '../constants.js';
 
 export const data = new SlashCommandBuilder()
@@ -8,7 +9,8 @@ export const data = new SlashCommandBuilder()
 
 export const execute = async (interaction) => {
     const userId = interaction.user.id;
-    if (database.players[userId]) {
+    
+    if (getUser(userId)) {
         return interaction.reply({ content: 'You already started your journey!', ephemeral: true });
     }
 
