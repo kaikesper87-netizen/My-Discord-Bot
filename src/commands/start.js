@@ -1,13 +1,13 @@
 // src/commands/start.js
-import { SlashCommandBuilder } from 'discord.js';
-import { ELEMENTS, ELEMENT_PASSIVES, SPELLS } from '../utils/constants.js';
+import { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
+import { ELEMENTS, ELEMENT_PASSIVES, SPELL_DATA } from '../utils/constants.js';
 import { getPlayer, setPlayer } from '../utils/database.js';
 
 export const data = new SlashCommandBuilder()
     .setName('start')
     .setDescription('Start your MageBit adventure!');
 
-export async function execute(interaction, client) {
+export async function execute(interaction) {
     const userId = interaction.user.id;
     let player = getPlayer(userId);
 
@@ -15,6 +15,7 @@ export async function execute(interaction, client) {
         return interaction.reply({ content: '❌ You have already started your adventure!', ephemeral: true });
     }
 
+    // Initialize player
     player = {
         username: interaction.user.username,
         element: null,
@@ -32,24 +33,20 @@ export async function execute(interaction, client) {
 
     setPlayer(userId, player);
 
-    const options = ELEMENTS.map(e => ({
-        label: e,
-        value: e
-    }));
-
-    const row = new client.discord.ActionRowBuilder()
-        .addComponents(
-            new client.discord.StringSelectMenuBuilder()
-                .setCustomId('start_select')
-                .setPlaceholder('Select your element')
-                .addOptions(options)
-        );
+    // Create element selection menu
+    const options = ELEMENTS.map(e => ({ label: e, value: e }));
+    const row = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+            .setCustomId('start_select')
+            .setPlaceholder('Select your element')
+            .addOptions(options)
+    );
 
     await interaction.reply({ content: 'Choose your magical element to begin your journey:', components: [row] });
 }
 
 // Handle element selection
-export async function handleComponent(interaction, client) {
+export async function handleComponent(interaction) {
     const userId = interaction.user.id;
     const player = getPlayer(userId);
 
@@ -61,7 +58,7 @@ export async function handleComponent(interaction, client) {
     player.element = element;
 
     // Assign first spell
-    const firstSpell = Object.values(SPELLS).find(s => s.element === element);
+    const firstSpell = Object.values(SPELL_DATA).find(s => s.element === element);
     if (firstSpell) player.spells.push(firstSpell);
 
     // Assign passive
@@ -69,16 +66,11 @@ export async function handleComponent(interaction, client) {
 
     setPlayer(userId, player);
 
-    // Format passive object into readable string
-    const passiveStr = Object.entries(player.passive)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join(', ') || 'None';
-
     await interaction.update({
         content: `✅ Your element is **${element}**!\n` +
-                 `You’ve learned your first spell **${firstSpell.emoji} ${firstSpell.name}**!\n` +
-                 `Your passive bonus: ${passiveStr}`,
-        components: [],
-        embeds: []
+                 `You’ve learned your first spell **${firstSpell?.emoji || ''} ${firstSpell?.name || ''}**!\n` +
+                 `Your passive bonus: ${Object.keys(player.passive).length ? JSON.stringify(player.passive) : 'None'}`,
+        embeds: [],
+        components: []
     });
 }
