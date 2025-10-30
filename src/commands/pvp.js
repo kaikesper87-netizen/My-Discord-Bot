@@ -1,6 +1,6 @@
 // src/commands/pvp.js
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { getPlayer, setBattle, getBattle, deleteBattle } from '../utils/database.js';
+import { getPlayer, getBattle, setBattle, deleteBattle } from '../database.js';
 
 export const data = new SlashCommandBuilder()
     .setName('pvp')
@@ -23,7 +23,7 @@ export async function execute(interaction) {
     setBattle(battleId, { challengerId, opponentId, turn: challengerId });
 
     const embed = new EmbedBuilder()
-        .setTitle('⚔️ PvP Challenge!')
+        .setTitle('PvP Challenge!')
         .setDescription(`${interaction.user.username} has challenged ${opponent.username} to a duel!`)
         .setColor('Random');
 
@@ -35,7 +35,6 @@ export async function execute(interaction) {
     await interaction.reply({ embeds: [embed], components: [row] });
 }
 
-// Handle PvP button clicks
 export async function handleComponent(interaction) {
     const [action, type, battleId] = interaction.customId.split('_');
     const battle = getBattle(battleId);
