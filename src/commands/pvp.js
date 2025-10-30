@@ -1,7 +1,7 @@
 // src/commands/pvp.js
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getUser } from '../utils/database.js';
-import { SPELL_DATA } from '../constants.js';
+import { SPELL_DATA } from '../utils/constants.js';
 
 export const data = new SlashCommandBuilder()
     .setName('pvp')
