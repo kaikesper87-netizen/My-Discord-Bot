@@ -18,14 +18,14 @@ export async function execute(interaction) {
         .setTitle(`${player.username}'s Profile`)
         .setColor('Random')
         .addFields(
-            { name: 'Element', value: player.element, inline: true },
-            { name: 'Rank', value: player.rank, inline: true },
+            { name: 'Element', value: player.element || 'None', inline: true },
+            { name: 'Rank', value: player.Rank || 'Novice Mage', inline: true },
             { name: 'HP', value: `${player.HP}/${player.maxHP}`, inline: true },
             { name: 'Mana', value: `${player.Mana}/${player.maxMana}`, inline: true },
             { name: 'Attack', value: `${player.attack}`, inline: true },
             { name: 'Defense', value: `${player.defense}`, inline: true },
-            { name: 'Gold', value: `${player.gold}`, inline: true },
-            { name: 'Spells', value: player.spells.map(s => `${s.emoji} ${s.element} Spell`).join('\n') || 'None' }
+            { name: 'Gold', value: `${player.Gold}`, inline: true },
+            { name: 'Spells', value: player.spells?.map(s => `${s.emoji} ${s.name}`).join('\n') || 'None' }
         )
         .setFooter({ text: 'MageBit RPG' });
 
