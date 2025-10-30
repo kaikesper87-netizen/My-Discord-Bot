@@ -1,25 +1,30 @@
-const { SlashCommandBuilder, MessageActionRow, MessageButton, MessageEmbed } = require('discord.js');
-const { ELEMENTS } = require('../utils/constants');
+import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
+import { database } from '../database.js';
+import { ELEMENTS } from '../constants.js';
 
-module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('start')
-        .setDescription('Start your adventure!'),
+export const data = new SlashCommandBuilder()
+    .setName('start')
+    .setDescription('Start your adventure and choose your element.');
 
-    async execute(interaction) {
-        const row = new MessageActionRow()
-            .addComponents(
-                new MessageButton()
-                    .setCustomId('choose_element')
-                    .setLabel('Choose Your Element')
-                    .setStyle('PRIMARY')
-            );
-
-        const embed = new MessageEmbed()
-            .setTitle('Welcome to MageBit!')
-            .setDescription('Click the button below to choose your element and start your journey.')
-            .setColor('BLUE');
-
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+export const execute = async (interaction) => {
+    const userId = interaction.user.id;
+    if (database.players[userId]) {
+        return interaction.reply({ content: 'You already started your journey!', ephemeral: true });
     }
+
+    const row = new ActionRowBuilder().addComponents(
+        ...ELEMENTS.map(e =>
+            new ButtonBuilder()
+                .setCustomId(`element_${e}`)
+                .setLabel(e)
+                .setStyle(ButtonStyle.Primary)
+        )
+    );
+
+    const embed = new EmbedBuilder()
+        .setTitle('Choose your element')
+        .setDescription('Click a button to select your element!')
+        .setColor('Random');
+
+    await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
 };
