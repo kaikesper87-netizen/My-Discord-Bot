@@ -2,7 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const dbPath = path.join('./src/database.json');
+const dbPath = path.join('./src/data/database.json');
 
 // Ensure database file exists
 if (!fs.existsSync(dbPath)) {
